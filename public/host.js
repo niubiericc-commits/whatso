@@ -136,21 +136,23 @@
         </span>
       </div>`).join('') || '<p class="section-sub">还没有玩家加入</p>';
 
-    const community = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
+    const communityCards = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
     const turnSecs = remainingSeconds(st.turnDeadline);
     const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：${turnSecs}s` : '';
 
-    const seats = st.players.map((p,i) => {
+    const n = st.players.length;
+    const rx=42, ry=37;
+    const seatsHtml = st.players.map((p,i)=>{
       if(!p.seated && st.stage!=='lobby') return '';
-      const tags=[];
-      if(i===st.dealerIdx) tags.push('<span class="tag">D</span>');
-      if(i===st.sbIdx) tags.push('<span class="tag">SB</span>');
-      if(i===st.bbIdx) tags.push('<span class="tag">BB</span>');
-      const cls=['p-seat']; if(i===st.turn) cls.push('turn'); if(p.folded) cls.push('folded');
-      return `<div class="${cls.join(' ')}">
-        <div class="nm">${esc(p.name)} ${tags.join('')} ${p.allIn?'<span class="tag" style="background:var(--burgundy);color:#fff;">ALL-IN</span>':''}</div>
-        <div class="chips">${p.chips} 筹码</div>
-        <div class="betamt">本轮下注 ${p.betThisStreet}${!p.connected?' · <span class="disc">已断线</span>':''}</div>
+      const angle = -Math.PI/2 + (n?(i/n):0)*2*Math.PI;
+      const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
+      const cls=['seat-pos']; if(i===st.turn) cls.push('turn'); if(p.folded) cls.push('folded');
+      const initial = (p.name||'?').trim().charAt(0).toUpperCase();
+      return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
+        <div class="seat-avatar">${esc(initial)}${i===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        <div class="seat-pname">${esc(p.name)}</div>
+        <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="disc">断线</span>':''}</div>
+        ${p.betThisStreet>0 ? `<div class="seat-bet-chip">${p.betThisStreet}</div>` : ''}
       </div>`;
     }).join('');
 
@@ -187,10 +189,15 @@
       </div>
 
       ${st.stage!=='lobby' ? `
-      <div class="gt-board">
-        <div class="gt-potline"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}${potlineExtra}</span></div>
-        <div class="community">${community}</div>
-        <div class="players-strip">${seats}</div>
+      <div class="table-strip"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}${potlineExtra}</span></div>
+      <div class="poker-table-wrap">
+        <div class="poker-table-felt">
+          <div class="table-center">
+            <div class="table-pot">底池 ${st.pot}</div>
+            <div class="table-community">${communityCards}</div>
+          </div>
+          ${seatsHtml}
+        </div>
       </div>` : ''}
 
       ${resultsHtml}
