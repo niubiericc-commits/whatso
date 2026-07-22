@@ -68,6 +68,9 @@ input:focus{outline:none;border-color:var(--gold);}
 .hole-cards .pcard .r{font-size:19px;} .hole-cards .pcard .s{font-size:16px;}
 .action-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;}
 .action-row .btn{width:auto;flex:1;min-width:90px;border-radius:999px;padding:14px 18px;font-size:13.5px;letter-spacing:.02em;text-transform:uppercase;font-weight:800;}
+.pot-quick-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px;}
+.pot-quick-row .btn{width:auto;flex:1;min-width:64px;}
+.btn-sm{padding:8px 10px;font-size:11px;border-radius:999px;}
 .raise-box{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;}
 .raise-box input{width:110px;border-radius:999px;text-align:center;}
 .raise-box .btn{border-radius:999px;}
