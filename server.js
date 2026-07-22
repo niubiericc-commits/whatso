@@ -41,6 +41,8 @@ function requireHost(ws) {
 }
 
 wss.on('connection', ws => {
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
@@ -48,6 +50,17 @@ wss.on('connection', ws => {
   });
   ws.on('close', () => handleDisconnect(ws));
 });
+
+// 心跳检测：定期 ping 所有连接，代理/浏览器悄悄断开而没触发 close 事件的
+// "僵尸连接"会在两次心跳内被发现并强制终止，逼客户端走正常的重连流程，
+// 避免出现"一边浏览器实时更新、另一边卡在旧状态"的情况。
+setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 20000);
 
 function handleMessage(ws, msg) {
   switch (msg.type) {
@@ -161,11 +174,12 @@ function handleDisconnect(ws) {
 
 // 定期清理长时间无人（房主和所有玩家都断开）的空房间
 setInterval(() => {
+  const now = Date.now();
   for (const [id, room] of rooms.entries()) {
     const anyConnected = room.hostWs || room.players.some(p => p.ws);
     if (!anyConnected) {
       room.emptyStreak = (room.emptyStreak || 0) + 1;
-      if (room.emptyStreak > 120) rooms.delete(id);
+      if (room.emptyStreak > 120) rooms.delete(id); // 约 1 小时无人连接后清理
     } else {
       room.emptyStreak = 0;
     }
