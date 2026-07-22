@@ -1,8 +1,8 @@
 {
-  "name": "poker-online-table",
+  "name": "pokergo",
   "version": "1.0.0",
   "private": true,
-  "description": "德州扑克真人手机对战 - 服务端权威发牌，隐藏底牌真隔离",
+  "description": "PokerGo - 服务端权威发牌，隐藏底牌真隔离的真人手机德州扑克",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
