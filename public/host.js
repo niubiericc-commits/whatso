@@ -18,7 +18,7 @@
     roomId = null; hostToken = null; lastState = null; lastError = null;
     clearTimeout(connectTimeoutTimer);
     clearTimeout(reconnectTimer);
-    connSeq++; // 让任何还在飞的旧连接消息作废
+    connSeq++;
     render();
   }
 
@@ -151,7 +151,14 @@
 
     let resultsHtml = '';
     if(st.stage==='showdown' && st.results){
+      const reveal = st.players.filter(p=>p.cards && p.cards.length).map(p=>`
+        <div style="text-align:center;">
+          <div style="font-size:11px;margin-bottom:4px;">${esc(p.name)}</div>
+          <div style="display:flex;gap:4px;justify-content:center;">${p.cards.map(c=>cardHtml(c)).join('')}</div>
+          ${p.handName ? `<div style="font-size:11px;color:var(--gold-bright);margin-top:4px;font-family:var(--font-mono);">${esc(p.handName)}</div>` : ''}
+        </div>`).join('');
       resultsHtml = `<div class="card"><h2 class="section-title" style="font-size:20px;">本局结果</h2>
+        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">${reveal}</div>
         ${st.results.map(r=>`<div class="showdown-row"><span>${esc(r.handName)}</span><span>${r.winners.map(esc).join('、')} + ${r.amount}</span></div>`).join('')}
         <div class="btn-row"><button class="btn btn-primary" id="nextHandBtn">开始下一局</button></div>
       </div>`;
