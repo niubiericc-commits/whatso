@@ -2,6 +2,7 @@
   const SUIT_SYMBOL = { s:'♠', h:'♥', d:'♦', c:'♣' };
   const RANK_LABEL = {11:'J',12:'Q',13:'K',14:'A'};
   const STAGE_LABEL = { lobby:'等待房主开局', preflop:'翻牌前', flop:'翻牌', turn:'转牌', river:'河牌', showdown:'摊牌' };
+  const HAND_NAMES = ['高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
 
   const params = new URLSearchParams(location.search);
   const prefillRoom = (params.get('room')||'').toUpperCase();
@@ -21,6 +22,47 @@
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
   function remainingSeconds(deadline){ return deadline ? Math.max(0, Math.ceil((deadline - Date.now())/1000)) : null; }
+
+  // ---------------- 客户端实时算牌（只用来提示自己当前的最大牌型，不影响服务端权威判定） ----------------
+  function combinations(arr, k){
+    const res = [];
+    (function helper(start, combo){
+      if(combo.length===k){ res.push(combo.slice()); return; }
+      for(let i=start;i<arr.length;i++){ combo.push(arr[i]); helper(i+1, combo); combo.pop(); }
+    })(0, []);
+    return res;
+  }
+  function handValue(cards5){
+    const ranks = cards5.map(c=>c.r).sort((a,b)=>b-a);
+    const suits = cards5.map(c=>c.s);
+    const isFlush = suits.every(s=>s===suits[0]);
+    let uniq=[...new Set(ranks)], isStraight=false, straightHigh=0;
+    if(uniq.length===5){
+      if(uniq[0]-uniq[4]===4){ isStraight=true; straightHigh=uniq[0]; }
+      else if(uniq[0]===14 && uniq[1]===5 && uniq[2]===4 && uniq[3]===3 && uniq[4]===2){ isStraight=true; straightHigh=5; }
+    }
+    const counts={}; ranks.forEach(r=>counts[r]=(counts[r]||0)+1);
+    const groups = Object.entries(counts).map(([r,c])=>({r:+r,c})).sort((a,b)=> b.c-a.c || b.r-a.r);
+    if(isStraight && isFlush) return [8, straightHigh];
+    if(groups[0].c===4) return [7, groups[0].r, groups[1].r];
+    if(groups[0].c===3 && groups[1] && groups[1].c===2) return [6, groups[0].r, groups[1].r];
+    if(isFlush) return [5, ...ranks];
+    if(isStraight) return [4, straightHigh];
+    if(groups[0].c===3) return [3, groups[0].r, ...groups.slice(1).map(g=>g.r)];
+    if(groups[0].c===2 && groups[1] && groups[1].c===2) return [2, Math.max(groups[0].r,groups[1].r), Math.min(groups[0].r,groups[1].r), groups[2].r];
+    if(groups[0].c===2) return [1, groups[0].r, ...groups.slice(1).map(g=>g.r)];
+    return [0, ...ranks];
+  }
+  function compareVal(a,b){
+    for(let i=0;i<Math.max(a.length,b.length);i++){ const av=a[i]||0, bv=b[i]||0; if(av!==bv) return av-bv; }
+    return 0;
+  }
+  function currentHandName(cards){
+    if(!cards || cards.length<5) return null;
+    let best=null;
+    combinations(cards,5).forEach(c=>{ const v=handValue(c); if(!best||compareVal(v,best)>0) best=v; });
+    return best ? HAND_NAMES[best[0]] : null;
+  }
 
   // connSeq 保证切换房间时，旧连接的过期消息/自动重连不会污染新房间的状态
   function connect(onOpen){
@@ -182,6 +224,8 @@
       const myCardsHtml = (me.cards||[]).length
         ? `<div class="hole-cards">${me.cards.map(c=>cardHtml(c)).join('')}</div>`
         : '';
+      const myHandName = currentHandName([...(me.cards||[]), ...(st.community||[])]);
+      const handNameHtml = myHandName ? `<div style="font-family:var(--font-mono);font-size:12px;color:var(--gold-bright);margin-bottom:8px;">当前牌型：${esc(myHandName)}</div>` : '';
       const isMyTurn = st.turn === st.players.indexOf(me);
       let bottom;
       if(me.folded){
@@ -196,6 +240,12 @@
             <button class="btn btn-blue" id="callBtn">${need<=0?'过牌':'跟注 '+need}</button>
             <button class="btn btn-ghost" id="allinBtn">全下 (${me.chips})</button>
           </div>
+          <div class="pot-quick-row">
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.25">1/4 池</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.5">1/2 池</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.75">3/4 池</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="1">全池</button>
+          </div>
           <div class="raise-box">
             <input type="number" id="raiseInput" placeholder="加注到…" min="${st.currentBet+1}">
             <button class="btn btn-primary auto" id="raiseBtn">加注</button>
@@ -205,6 +255,7 @@
         <div class="turn-panel">
           <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${isMyTurn && !me.folded ? '轮到你了' : '我的手牌'}</div>
           ${myCardsHtml}
+          ${handNameHtml}
           ${bottom}
         </div>`;
     }
@@ -227,6 +278,18 @@
       if(!v || v<=st.currentBet){ alert('加注金额需大于当前下注'); return; }
       send({type:'action', action:'raise', amount:v});
     };
+    document.querySelectorAll('[data-frac]').forEach(b=>{
+      b.onclick = () => {
+        const frac = parseFloat(b.dataset.frac);
+        const need = Math.max(0, st.currentBet - me.betThisStreet);
+        const potAfterCall = st.pot + need;
+        let target = st.currentBet + Math.round(frac * potAfterCall);
+        target = Math.max(target, st.currentBet + 1);
+        target = Math.min(target, me.betThisStreet + me.chips);
+        const input = document.getElementById('raiseInput');
+        if(input) input.value = target;
+      };
+    });
   }
 
   // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）
