@@ -26,9 +26,56 @@ function send(ws, obj) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
 }
 
+const AUTO_NEXT_HAND_DELAY_MS = 8000; // 摊牌后自动开始下一局的等待时间
+
 function broadcastRoom(room) {
+  scheduleTurnTimer(room);
+  scheduleAutoNextHand(room);
   if (room.hostWs) send(room.hostWs, serializeForViewer(room, '__host__'));
   room.players.forEach(p => { if (p.ws) send(p.ws, serializeForViewer(room, p.id)); });
+}
+
+// 思考时间计时器：轮到某人时若设置了限时，超时自动执行默认动作（能过牌就过牌，否则弃牌）
+function scheduleTurnTimer(room) {
+  if (room.turn == null || room.stage === 'lobby' || room.stage === 'showdown' || !room.turnTimeLimit) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+    room.turnDeadline = null;
+    room._scheduledTurn = null;
+    return;
+  }
+  if (room._scheduledTurn === room.turn && room.turnTimer) return; // 同一回合已经在计时，不重复设置
+  clearTimeout(room.turnTimer);
+  room._scheduledTurn = room.turn;
+  room.turnDeadline = Date.now() + room.turnTimeLimit * 1000;
+  const turnIdxAtSchedule = room.turn;
+  room.turnTimer = setTimeout(() => {
+    room.turnTimer = null;
+    if (room.turn !== turnIdxAtSchedule) return; // 这期间已经有人手动操作了，忽略
+    const player = room.players[turnIdxAtSchedule];
+    if (!player) return;
+    const need = room.currentBet - player.betThisStreet;
+    applyAction(room, player.id, need > 0 ? 'fold' : 'check', null);
+    broadcastRoom(room);
+  }, room.turnTimeLimit * 1000);
+}
+
+// 摊牌后自动开始下一局，不需要房主手动点
+function scheduleAutoNextHand(room) {
+  if (room.stage !== 'showdown') {
+    clearTimeout(room.autoNextTimer);
+    room.autoNextTimer = null;
+    room.nextHandDeadline = null;
+    return;
+  }
+  if (room.autoNextTimer) return; // 已经在倒计时，不重复设置
+  room.nextHandDeadline = Date.now() + AUTO_NEXT_HAND_DELAY_MS;
+  room.autoNextTimer = setTimeout(() => {
+    room.autoNextTimer = null;
+    if (room.stage !== 'showdown') return;
+    dealHand(room);
+    broadcastRoom(room);
+  }, AUTO_NEXT_HAND_DELAY_MS);
 }
 
 function requireHost(ws) {
@@ -75,6 +122,7 @@ function handleMessage(ws, msg) {
         smallBlind: Math.max(1, parseInt(msg.smallBlind, 10) || 5),
         bigBlind: Math.max(2, parseInt(msg.bigBlind, 10) || 10),
         startingChips: Math.max(20, parseInt(msg.startingChips, 10) || 1000),
+        turnTimeLimit: Math.max(0, parseInt(msg.turnTimeLimit, 10) || 0),
         players: [],
         stage: 'lobby',
         community: [],
@@ -99,7 +147,6 @@ function handleMessage(ws, msg) {
     case 'join': {
       const room = rooms.get((msg.roomId || '').toUpperCase());
       if (!room) { send(ws, { type: 'error', message: '房间不存在，请检查房间码' }); return; }
-      if (room.stage !== 'lobby') { send(ws, { type: 'error', message: '牌局已开始，暂时无法加入，请等待下一局' }); return; }
       if (room.players.length >= 9) { send(ws, { type: 'error', message: '房间已满（最多 9 人）' }); return; }
       const name = (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
       const id = randomId(8);
@@ -145,6 +192,12 @@ function handleMessage(ws, msg) {
       broadcastRoom(room);
       break;
     }
+    case 'host_update_timer': {
+      const room = requireHost(ws); if (!room) return;
+      room.turnTimeLimit = Math.max(0, parseInt(msg.seconds, 10) || 0);
+      broadcastRoom(room);
+      break;
+    }
     case 'action': {
       const room = rooms.get(ws.roomId);
       if (!room || !ws.playerId) return;
@@ -179,7 +232,11 @@ setInterval(() => {
     const anyConnected = room.hostWs || room.players.some(p => p.ws);
     if (!anyConnected) {
       room.emptyStreak = (room.emptyStreak || 0) + 1;
-      if (room.emptyStreak > 120) rooms.delete(id); // 约 1 小时无人连接后清理
+      if (room.emptyStreak > 120) {
+        clearTimeout(room.turnTimer);
+        clearTimeout(room.autoNextTimer);
+        rooms.delete(id);
+      }
     } else {
       room.emptyStreak = 0;
     }
