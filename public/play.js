@@ -21,7 +21,6 @@
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
 
-  // connSeq 保证切换房间时，旧连接的过期消息/自动重连不会污染新房间的状态
   function connect(onOpen){
     connSeq++;
     const myConn = connSeq;
@@ -31,7 +30,7 @@
     ws = socket;
     socket.onopen = () => { if(myConn===connSeq && onOpen) onOpen(); };
     socket.onmessage = (ev) => {
-      if(myConn!==connSeq) return; // 已被更新的连接取代，忽略
+      if(myConn!==connSeq) return;
       const msg = JSON.parse(ev.data);
       if(msg.type === 'joined'){
         roomId = msg.roomId; playerId = msg.playerId; playerToken = msg.playerToken;
@@ -45,7 +44,7 @@
       }
     };
     socket.onclose = () => {
-      if(myConn!==connSeq) return; // 已被新连接取代，不用这条旧连接重连
+      if(myConn!==connSeq) return;
       reconnectTimer = setTimeout(()=>tryAutoReconnect(), 2000);
     };
   }
@@ -59,7 +58,7 @@
   }
 
   function joinRoom(rid, name){
-    lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
+    lastState = null; lastError = null; playerId = null;
     const saved = localStorage.getItem(storageKey(rid));
     connect(()=>{
       if(saved){
@@ -149,16 +148,19 @@
       </div>`;
     } else if(me && !me.seated){
       panel = `<div class="turn-panel"><p class="section-sub">本局你没有入座（筹码为 0 或本局未参与），请等待下一局。</p></div>`;
-    } else if(me && me.folded){
-      panel = `<div class="turn-panel"><p class="section-sub">你本局已弃牌，等待结果…</p></div>`;
-    } else if(me && st.turn !== st.players.indexOf(me)){
-      panel = `<div class="turn-panel"><p class="section-sub">等待其他玩家行动…</p></div>`;
     } else if(me){
-      const need = st.currentBet - me.betThisStreet;
-      panel = `
-        <div class="turn-panel">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">轮到你了</div>
-          <div class="hole-cards">${(me.cards||[]).map(c=>cardHtml(c)).join('') || '<div class="pcard back"></div><div class="pcard back"></div>'}</div>
+      const myCardsHtml = (me.cards||[]).length
+        ? `<div class="hole-cards">${me.cards.map(c=>cardHtml(c)).join('')}</div>`
+        : '';
+      const isMyTurn = st.turn === st.players.indexOf(me);
+      let bottom;
+      if(me.folded){
+        bottom = `<p class="section-sub" style="margin-top:10px;">你本局已弃牌，等待结果…</p>`;
+      } else if(!isMyTurn){
+        bottom = `<p class="section-sub" style="margin-top:10px;">等待其他玩家行动…</p>`;
+      } else {
+        const need = st.currentBet - me.betThisStreet;
+        bottom = `
           <div class="action-row">
             <button class="btn btn-danger" id="foldBtn">弃牌</button>
             <button class="btn btn-blue" id="callBtn">${need<=0?'过牌':'跟注 '+need}</button>
@@ -167,7 +169,13 @@
           <div class="raise-box">
             <input type="number" id="raiseInput" placeholder="加注到…" min="${st.currentBet+1}">
             <button class="btn btn-primary auto" id="raiseBtn">加注</button>
-          </div>
+          </div>`;
+      }
+      panel = `
+        <div class="turn-panel">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${isMyTurn && !me.folded ? '轮到你了' : '我的手牌'}</div>
+          ${myCardsHtml}
+          ${bottom}
         </div>`;
     }
 
@@ -195,7 +203,6 @@
     };
   }
 
-  // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）
   (function init(){
     const lastRoom = prefillRoom || localStorage.getItem('poker_last_room');
     if(lastRoom){
@@ -210,4 +217,5 @@
     }
     render();
   })();
+})();
 })();
