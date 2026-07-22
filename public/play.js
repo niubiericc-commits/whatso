@@ -22,6 +22,7 @@
   function storageKey(rid){ return 'poker_player_' + rid; }
   function remainingSeconds(deadline){ return deadline ? Math.max(0, Math.ceil((deadline - Date.now())/1000)) : null; }
 
+  // connSeq 保证切换房间时，旧连接的过期消息/自动重连不会污染新房间的状态
   function connect(onOpen){
     connSeq++;
     const myConn = connSeq;
@@ -31,7 +32,7 @@
     ws = socket;
     socket.onopen = () => { if(myConn===connSeq && onOpen) onOpen(); };
     socket.onmessage = (ev) => {
-      if(myConn!==connSeq) return;
+      if(myConn!==connSeq) return; // 已被更新的连接取代，忽略
       const msg = JSON.parse(ev.data);
       if(msg.type === 'joined'){
         roomId = msg.roomId; playerId = msg.playerId; playerToken = msg.playerToken;
@@ -45,7 +46,7 @@
       }
     };
     socket.onclose = () => {
-      if(myConn!==connSeq) return;
+      if(myConn!==connSeq) return; // 已被新连接取代，不用这条旧连接重连
       reconnectTimer = setTimeout(()=>tryAutoReconnect(), 2000);
     };
   }
@@ -59,7 +60,7 @@
   }
 
   function joinRoom(rid, name){
-    lastState = null; lastError = null; playerId = null;
+    lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
     const saved = localStorage.getItem(storageKey(rid));
     connect(()=>{
       if(saved){
@@ -118,22 +119,41 @@
       return;
     }
 
-    const community = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
     const turnSecs = remainingSeconds(st.turnDeadline);
     const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：${turnSecs}s` : '';
-    const seats = st.players.map((p,i) => {
+    const communityCards = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
+
+    // 以"我"为最下方，环绕椭圆桌排列座位（GGPoker 等主流客户端的经典视角）
+    const n = st.players.length;
+    const meIdx = st.players.findIndex(p=>p.id===playerId);
+    const startIdx = meIdx>=0 ? meIdx : 0;
+    const rx=42, ry=37;
+    const seatsHtml = st.players.map((p,orig)=>{
       if(!p.seated && st.stage!=='showdown') return '';
-      const tags=[];
-      if(i===st.dealerIdx) tags.push('<span class="tag">D</span>');
-      if(i===st.sbIdx) tags.push('<span class="tag">SB</span>');
-      if(i===st.bbIdx) tags.push('<span class="tag">BB</span>');
-      const cls=['p-seat']; if(i===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
-      return `<div class="${cls.join(' ')}">
-        <div class="nm">${esc(p.name)}${p.id===playerId?' (我)':''} ${tags.join('')} ${p.allIn?'<span class="tag" style="background:var(--burgundy);color:#fff;">ALL-IN</span>':''}</div>
-        <div class="chips">${p.chips} 筹码</div>
-        <div class="betamt">本轮下注 ${p.betThisStreet}</div>
+      const k = (orig - startIdx + n) % n;
+      const angle = Math.PI/2 + (k/n)*2*Math.PI;
+      const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
+      const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
+      const initial = (p.name||'?').trim().charAt(0).toUpperCase();
+      return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
+        <div class="seat-avatar">${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
+        <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}</div>
+        ${p.betThisStreet>0 ? `<div class="seat-bet-chip">${p.betThisStreet}</div>` : ''}
       </div>`;
     }).join('');
+
+    const tableHtml = `
+      <div class="table-strip"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>${potlineExtra.replace('　','')}</span></div>
+      <div class="poker-table-wrap">
+        <div class="poker-table-felt">
+          <div class="table-center">
+            <div class="table-pot">底池 ${st.pot}　当前下注 ${st.currentBet}</div>
+            <div class="table-community">${communityCards}</div>
+          </div>
+          ${seatsHtml}
+        </div>
+      </div>`;
 
     let panel = '';
     if(st.stage==='showdown'){
@@ -154,6 +174,7 @@
     } else if(me && !me.seated){
       panel = `<div class="turn-panel"><p class="section-sub">本局你没有入座（筹码为 0 或本局未参与），请等待下一局。</p></div>`;
     } else if(me){
+      // 手牌全程展示（只要你在场、没弃牌），不再只在轮到你时才显示
       const myCardsHtml = (me.cards||[]).length
         ? `<div class="hole-cards">${me.cards.map(c=>cardHtml(c)).join('')}</div>`
         : '';
@@ -186,11 +207,7 @@
 
     app.innerHTML = `
       ${errHtml}
-      <div class="gt-board">
-        <div class="gt-potline"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}${potlineExtra}</span></div>
-        <div class="community">${community}</div>
-        <div class="players-strip">${seats}</div>
-      </div>
+      ${tableHtml}
       ${panel}
     `;
 
@@ -208,6 +225,7 @@
     };
   }
 
+  // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）
   (function init(){
     const lastRoom = prefillRoom || localStorage.getItem('poker_last_room');
     if(lastRoom){
@@ -223,6 +241,7 @@
     render();
   })();
 
+  // 每秒刷新一次界面，让倒计时数字实时跳动（不需要等服务器推新消息）
   setInterval(()=>{
     if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
   }, 1000);
