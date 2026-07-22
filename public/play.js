@@ -20,6 +20,7 @@
     return `<div class="pcard ${red?'red':'black'}"><span class="r">${label}</span><span class="s">${SUIT_SYMBOL[c.s]}</span></div>`;
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
+  function remainingSeconds(deadline){ return deadline ? Math.max(0, Math.ceil((deadline - Date.now())/1000)) : null; }
 
   function connect(onOpen){
     connSeq++;
@@ -118,6 +119,8 @@
     }
 
     const community = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
+    const turnSecs = remainingSeconds(st.turnDeadline);
+    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：${turnSecs}s` : '';
     const seats = st.players.map((p,i) => {
       if(!p.seated && st.stage!=='showdown') return '';
       const tags=[];
@@ -141,11 +144,12 @@
           ${p.handName ? `<div style="font-size:11px;color:var(--gold-bright);margin-top:4px;font-family:var(--font-mono);">${esc(p.handName)}</div>` : ''}
         </div>`).join('');
       const results = (st.results||[]).map(r=>`<div class="showdown-row"><span>${esc(r.handName)}</span><span>${r.winners.map(esc).join('、')} + ${r.amount}</span></div>`).join('');
+      const nextSecs = remainingSeconds(st.nextHandDeadline);
       panel = `<div class="turn-panel">
         <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 10px;color:var(--gold-bright);">摊牌结果</h3>
         <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">${reveal}</div>
         ${results}
-        <p class="section-sub" style="margin-top:10px;">等待房主开始下一局…</p>
+        <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? nextSecs+' 秒后自动开始下一局…' : '等待房主开始下一局…'}</p>
       </div>`;
     } else if(me && !me.seated){
       panel = `<div class="turn-panel"><p class="section-sub">本局你没有入座（筹码为 0 或本局未参与），请等待下一局。</p></div>`;
@@ -183,7 +187,7 @@
     app.innerHTML = `
       ${errHtml}
       <div class="gt-board">
-        <div class="gt-potline"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}</span></div>
+        <div class="gt-potline"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}${potlineExtra}</span></div>
         <div class="community">${community}</div>
         <div class="players-strip">${seats}</div>
       </div>
@@ -218,4 +222,8 @@
     }
     render();
   })();
+
+  setInterval(()=>{
+    if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
+  }, 1000);
 })();
