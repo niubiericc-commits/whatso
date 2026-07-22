@@ -181,6 +181,9 @@ function serializeForViewer(room, viewerId) {
     turn: room.turn,
     smallBlind: room.smallBlind,
     bigBlind: room.bigBlind,
+    turnTimeLimit: room.turnTimeLimit || 0,
+    turnDeadline: room.turnDeadline || null,
+    nextHandDeadline: room.nextHandDeadline || null,
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
