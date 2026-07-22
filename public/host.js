@@ -241,4 +241,3 @@
     if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
   }, 1000);
 })();
-})();
