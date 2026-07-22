@@ -138,7 +138,7 @@
 
     const communityCards = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
     const turnSecs = remainingSeconds(st.turnDeadline);
-    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：${turnSecs}s` : '';
+    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：<span id="turnCountdown">${turnSecs}</span>s` : '';
 
     const n = st.players.length;
     const rx=42, ry=37;
@@ -168,7 +168,7 @@
       resultsHtml = `<div class="card"><h2 class="section-title" style="font-size:20px;">本局结果</h2>
         <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">${reveal}</div>
         ${st.results.map(r=>`<div class="showdown-row"><span>${esc(r.handName)}</span><span>${r.winners.map(esc).join('、')} + ${r.amount}</span></div>`).join('')}
-        <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? nextSecs+' 秒后自动开始下一局' : ''}</p>
+        <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? '<span id="nextHandCountdown">'+nextSecs+'</span> 秒后自动开始下一局' : ''}</p>
         <div class="btn-row"><button class="btn btn-primary" id="nextHandBtn">立即开始下一局</button></div>
       </div>`;
     }
@@ -243,8 +243,12 @@
   render();
   if(roomId && hostToken) connect();
 
-  // 每秒刷新一次界面，让倒计时数字实时跳动
+  // 每秒只更新倒计时的数字文本，不整体重画界面（避免打断正在输入的框）
   setInterval(()=>{
-    if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
+    if(!lastState) return;
+    const tEl = document.getElementById('turnCountdown');
+    if(tEl && lastState.turnDeadline) tEl.textContent = remainingSeconds(lastState.turnDeadline);
+    const nEl = document.getElementById('nextHandCountdown');
+    if(nEl && lastState.nextHandDeadline) nEl.textContent = remainingSeconds(lastState.nextHandDeadline);
   }, 1000);
 })();
