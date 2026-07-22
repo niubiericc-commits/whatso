@@ -18,7 +18,7 @@
     roomId = null; hostToken = null; lastState = null; lastError = null;
     clearTimeout(connectTimeoutTimer);
     clearTimeout(reconnectTimer);
-    connSeq++;
+    connSeq++; // 让任何还在飞的旧连接消息作废
     render();
   }
 
@@ -177,5 +177,68 @@
         <h2 class="section-title">${esc(st.name)}</h2>
         <div class="room-code">${roomId}</div>
         <p class="section-sub" style="text-align:center;">把房间码或下面的链接发给朋友，用手机浏览器打开加入</p>
-        <div class="copy-row"><input type="text" id="joinUrlInput" readonly
+        <div class="copy-row"><input type="text" id="joinUrlInput" readonly value="${joinUrl}"><button class="btn btn-ghost auto" id="copyBtn">复制</button></div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title" style="font-size:20px;">玩家列表（${st.players.length} 人）</h2>
+        ${playersRows}
+        ${st.stage==='lobby' ? `<div class="btn-row"><button class="btn btn-primary" id="startBtn" ${st.players.length<2?'disabled':''}>开始游戏</button></div>` : `<p class="section-sub" style="margin-top:10px;">牌局已开始，新加入的玩家会自动排到下一局，不影响当前这手牌。</p>`}
+      </div>
+
+      ${st.stage!=='lobby' ? `
+      <div class="gt-board">
+        <div class="gt-potline"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>底池：${st.pot}　当前下注：${st.currentBet}${potlineExtra}</span></div>
+        <div class="community">${community}</div>
+        <div class="players-strip">${seats}</div>
+      </div>` : ''}
+
+      ${resultsHtml}
+
+      <div class="card">
+        <h2 class="section-title" style="font-size:20px;">盲注 &amp; 思考时间设置</h2>
+        <div class="field" style="display:flex;gap:12px;">
+          <div style="flex:1"><label>小盲注</label><input type="number" id="sbInput" value="${st.smallBlind}" min="1"></div>
+          <div style="flex:1"><label>大盲注</label><input type="number" id="bbInput" value="${st.bigBlind}" min="2"></div>
+        </div>
+        <div class="btn-row"><button class="btn btn-ghost" id="updateBlindsBtn">更新盲注（下一局生效）</button></div>
+        <div class="field" style="margin-top:14px;"><label>每人思考时间（秒，0 = 不限时，立即生效）</label><input type="number" id="timerInput" value="${st.turnTimeLimit||0}" min="0"></div>
+        <div class="btn-row"><button class="btn btn-ghost" id="updateTimerBtn">更新思考时间</button></div>
+      </div>
+
+      <div class="hint-box">房主看不到任何玩家的底牌（除非摊牌），保证公平。刷新本页会自动用房间口令重新连接，不会丢失牌局。摊牌后会在几秒内自动开始下一局，无需手动点击。思考时间超时会自动执行默认操作（能过牌就过牌，否则弃牌）。</div>
+    `;
+
+    const copyBtn = document.getElementById('copyBtn');
+    if(copyBtn) copyBtn.onclick = () => {
+      document.getElementById('joinUrlInput').select();
+      navigator.clipboard && navigator.clipboard.writeText(joinUrl);
+      copyBtn.textContent = '已复制';
+      setTimeout(()=>copyBtn.textContent='复制', 1500);
+    };
+    const startBtn = document.getElementById('startBtn');
+    if(startBtn) startBtn.onclick = () => send({type:'host_start'});
+    const nextHandBtn = document.getElementById('nextHandBtn');
+    if(nextHandBtn) nextHandBtn.onclick = () => send({type:'host_next_hand'});
+    const updateBlindsBtn = document.getElementById('updateBlindsBtn');
+    if(updateBlindsBtn) updateBlindsBtn.onclick = () => {
+      send({type:'host_update_blinds', sb: parseInt(document.getElementById('sbInput').value,10), bb: parseInt(document.getElementById('bbInput').value,10)});
+    };
+    const updateTimerBtn = document.getElementById('updateTimerBtn');
+    if(updateTimerBtn) updateTimerBtn.onclick = () => {
+      send({type:'host_update_timer', seconds: parseInt(document.getElementById('timerInput').value,10)});
+    };
+    document.querySelectorAll('[data-kick]').forEach(b=>{
+      b.onclick = () => { if(confirm('确认踢出该玩家？')) send({type:'host_kick', playerId:b.dataset.kick}); };
+    });
+  }
+
+  render();
+  if(roomId && hostToken) connect();
+
+  // 每秒刷新一次界面，让倒计时数字实时跳动
+  setInterval(()=>{
+    if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
+  }, 1000);
+})();
 })();
