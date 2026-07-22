@@ -87,7 +87,10 @@ function advanceStreet(room) {
 
 function runShowdown(room) {
   const alive = room.players.filter(p => !p.folded);
-  alive.forEach(p => p.handVal = best7([...p.cards, ...room.community]));
+  alive.forEach(p => {
+    p.handVal = best7([...p.cards, ...room.community]);
+    p.handName = HAND_NAMES[p.handVal[0]];
+  });
   const pots = computeSidePots(room.players);
   room.results = [];
   pots.forEach(pot => {
@@ -161,6 +164,7 @@ function applyAction(room, playerId, action, amount) {
   return { error: '未知操作' };
 }
 
+// 生成发给某个观察者(某玩家自己 或 房主)的视图：绝不泄露他人底牌
 function serializeForViewer(room, viewerId) {
   return {
     type: 'state',
@@ -191,7 +195,8 @@ function serializeForViewer(room, viewerId) {
         connected: !!p.connected,
         seated,
         hasCards: !!(p.cards && p.cards.length),
-        cards: revealCards ? (p.cards || []) : []
+        cards: revealCards ? (p.cards || []) : [],
+        handName: (room.stage === 'showdown' && !p.folded) ? (p.handName || null) : null
       };
     }),
     results: room.results || null
