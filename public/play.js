@@ -136,9 +136,11 @@
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
-        <div class="seat-avatar">${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
-        <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
-        <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}</div>
+        <div class="seat-avatar avatar-c${orig%9}">${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        <div class="seat-nameplate">
+          <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
+          <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}</div>
+        </div>
         ${p.betThisStreet>0 ? `<div class="seat-bet-chip">${p.betThisStreet}</div>` : ''}
       </div>`;
     }).join('');
@@ -146,12 +148,14 @@
     const tableHtml = `
       <div class="table-strip"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>${potlineExtra.replace('　','')}</span></div>
       <div class="poker-table-wrap">
-        <div class="poker-table-felt">
-          <div class="table-center">
-            <div class="table-pot">底池 ${st.pot}　当前下注 ${st.currentBet}</div>
-            <div class="table-community">${communityCards}</div>
+        <div class="poker-table-rail">
+          <div class="poker-table-felt">
+            <div class="table-center">
+              <div class="table-pot"><span class="chip-ico"></span>底池 ${st.pot}${st.currentBet?'　下注 '+st.currentBet:''}</div>
+              <div class="table-community">${communityCards}</div>
+            </div>
+            ${seatsHtml}
           </div>
-          ${seatsHtml}
         </div>
       </div>`;
 
