@@ -60,12 +60,17 @@ input:focus{outline:none;border-color:var(--gold);}
 .p-seat .betamt{font-family:var(--font-mono);color:var(--muted);font-size:10.5px;}
 .p-seat .disc{color:var(--burgundy-bright);font-size:10px;}
 
-.turn-panel{border:1px solid var(--gold);border-radius:14px;padding:18px;background:rgba(207,159,51,0.06);text-align:center;}
-.hole-cards{display:flex;gap:10px;justify-content:center;margin:12px 0;}
-.action-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px;}
-.action-row .btn{width:auto;flex:1;min-width:90px;}
+.turn-panel{border:1px solid var(--gold);border-radius:16px;padding:18px;background:linear-gradient(180deg,rgba(207,159,51,0.08),rgba(207,159,51,0.02));text-align:center;}
+.hole-cards{display:flex;justify-content:center;margin:14px 0 16px;}
+.hole-cards .pcard{width:56px;height:78px;margin:0 -6px;box-shadow:0 8px 18px rgba(0,0,0,.5);}
+.hole-cards .pcard:first-child{transform:rotate(-7deg) translateY(3px);}
+.hole-cards .pcard:last-child{transform:rotate(7deg) translateY(3px);}
+.hole-cards .pcard .r{font-size:19px;} .hole-cards .pcard .s{font-size:16px;}
+.action-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;}
+.action-row .btn{width:auto;flex:1;min-width:90px;border-radius:999px;padding:14px 18px;font-size:13.5px;letter-spacing:.02em;text-transform:uppercase;font-weight:800;}
 .raise-box{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;}
-.raise-box input{width:110px;}
+.raise-box input{width:110px;border-radius:999px;text-align:center;}
+.raise-box .btn{border-radius:999px;}
 .showdown-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
 .showdown-row:last-child{border-bottom:none;}
 .waiting-box{text-align:center;padding:30px 10px;color:var(--muted);}
@@ -78,30 +83,55 @@ input:focus{outline:none;border-color:var(--gold);}
 .copy-row{display:flex;gap:8px;align-items:center;}
 .copy-row input{flex:1;}
 
-/* ---------- poker table (GGPoker 风格椭圆牌桌) ---------- */
+/* ---------- poker table (更接近主流扑克客户端的质感) ---------- */
 .table-strip{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:var(--gold-bright);margin-bottom:10px;flex-wrap:wrap;gap:4px;}
-.poker-table-wrap{position:relative;width:100%;max-width:520px;margin:0 auto 16px;aspect-ratio:4/3;}
-.poker-table-felt{position:absolute;inset:7%;border-radius:50%;
-  background:radial-gradient(ellipse at 50% 38%, var(--felt-light) 0%, var(--felt) 55%, var(--felt-dark) 100%);
-  border:5px solid var(--gold);box-shadow:0 22px 50px -15px rgba(0,0,0,.7), inset 0 0 50px rgba(0,0,0,.45);}
-.table-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;width:74%;}
-.table-pot{font-family:var(--font-mono);color:var(--gold-bright);font-size:11.5px;margin-bottom:6px;letter-spacing:.03em;white-space:nowrap;}
-.table-community{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;}
-.table-community .pcard{width:30px;height:42px;}
-.table-community .pcard .r{font-size:11px;} .table-community .pcard .s{font-size:9px;}
-.seat-pos{position:absolute;transform:translate(-50%,-50%);width:64px;text-align:center;}
-.seat-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(160deg,var(--felt-light),var(--felt-dark));
-  border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);
-  font-size:16px;color:var(--cream);margin:0 auto 3px;position:relative;box-shadow:0 4px 10px rgba(0,0,0,.4);}
-.seat-pos.turn .seat-avatar{border-color:var(--gold);box-shadow:0 0 0 4px rgba(207,159,51,0.28);}
-.seat-pos.me .seat-avatar{border-color:var(--blue-bright);}
-.seat-pos.folded{opacity:.35;}
-.seat-pname{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.poker-table-wrap{position:relative;width:100%;max-width:540px;margin:0 auto 20px;aspect-ratio:4/3;}
+.poker-table-rail{position:absolute;inset:3%;border-radius:50%;
+  background:linear-gradient(160deg,#3a2412,#1a0f06 60%,#0a0603);
+  box-shadow:0 26px 60px -18px rgba(0,0,0,.8), inset 0 0 0 2px rgba(207,159,51,0.25);}
+.poker-table-felt{position:absolute;inset:8.5%;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 32%, #1f7a52 0%, #146042 32%, #0c4530 62%, #082c1f 100%);
+  border:3px solid var(--gold);
+  box-shadow:inset 0 0 60px rgba(0,0,0,.5), inset 0 0 0 6px rgba(0,0,0,.15), 0 0 0 1px rgba(240,207,106,0.3);}
+.table-center{position:absolute;top:48%;left:50%;transform:translate(-50%,-50%);text-align:center;width:76%;}
+.table-pot{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-weight:700;color:var(--ink);
+  font-size:12px;margin-bottom:8px;padding:4px 14px;border-radius:999px;
+  background:linear-gradient(180deg,var(--gold-bright),var(--gold));box-shadow:0 4px 10px rgba(0,0,0,.4);white-space:nowrap;}
+.table-pot .chip-ico{width:12px;height:12px;border-radius:50%;background:repeating-conic-gradient(var(--ink) 0deg 45deg, var(--cream) 45deg 90deg);display:inline-block;box-shadow:0 0 0 1.5px var(--ink);}
+.table-community{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;}
+.table-community .pcard{width:32px;height:45px;}
+.table-community .pcard .r{font-size:12px;} .table-community .pcard .s{font-size:10px;}
+
+.seat-pos{position:absolute;transform:translate(-50%,-50%);width:68px;text-align:center;z-index:2;}
+.seat-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-size:18px;color:#fff;margin:0 auto;position:relative;
+  border:2.5px solid rgba(255,255,255,0.25);box-shadow:0 5px 14px rgba(0,0,0,.5);}
+.seat-pos.turn .seat-avatar{border-color:var(--gold-bright);box-shadow:0 0 0 4px rgba(240,207,106,0.35),0 5px 14px rgba(0,0,0,.5);}
+.seat-pos.me .seat-avatar{box-shadow:0 0 0 3px var(--blue-bright),0 5px 14px rgba(0,0,0,.5);}
+.seat-pos.folded{opacity:.32;}
+.seat-nameplate{background:rgba(8,16,13,0.88);border:1px solid rgba(255,255,255,0.08);border-radius:8px;
+  padding:2px 6px;margin-top:-6px;position:relative;z-index:1;}
+.seat-pname{font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
 .seat-pname .me-tag{color:var(--blue-bright);}
 .seat-chips{font-size:9px;color:var(--gold-bright);font-family:var(--font-mono);}
-.seat-dealer-btn{position:absolute;top:-3px;right:2px;width:15px;height:15px;border-radius:50%;background:var(--gold);
-  color:var(--ink);font-family:var(--font-mono);font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 2px 4px rgba(0,0,0,.4);}
-.seat-bet-chip{font-family:var(--font-mono);font-size:9px;background:rgba(0,0,0,.55);color:var(--gold-bright);
-  padding:1px 6px;border-radius:999px;border:1px solid var(--gold);margin-top:2px;display:inline-block;}
+.seat-dealer-btn{position:absolute;top:-5px;right:-6px;width:18px;height:18px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #fff, #d8d2c2 70%);color:var(--ink);
+  font-family:var(--font-mono);font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.15);}
+.seat-bet-chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:9px;
+  background:rgba(8,16,13,0.85);color:var(--gold-bright);padding:2px 7px 2px 3px;border-radius:999px;
+  border:1px solid rgba(240,207,106,0.5);margin-top:3px;}
+.seat-bet-chip::before{content:'';width:11px;height:11px;border-radius:50%;flex:none;
+  background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1px rgba(0,0,0,.4);}
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
+
+/* 玩家头像按座位序号轮换配色，视觉上更接近主流客户端的“每人一色” */
+.avatar-c0{background:linear-gradient(150deg,#3a6ea8,#1f3f63);}
+.avatar-c1{background:linear-gradient(150deg,#c14a58,#7a2530);}
+.avatar-c2{background:linear-gradient(150deg,#3a9d7a,#1e5940);}
+.avatar-c3{background:linear-gradient(150deg,#b9852f,#7a5416);}
+.avatar-c4{background:linear-gradient(150deg,#8a5ec1,#4f3277);}
+.avatar-c5{background:linear-gradient(150deg,#4aa8c1,#276a7a);}
+.avatar-c6{background:linear-gradient(150deg,#c17a3a,#7a4a1e);}
+.avatar-c7{background:linear-gradient(150deg,#5f9e4a,#33581f);}
+.avatar-c8{background:linear-gradient(150deg,#c14a9d,#7a2a63);}
