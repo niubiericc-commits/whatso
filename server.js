@@ -1,68 +1,176 @@
-# 德州扑克真人手机对战 · 服务端
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const crypto = require('crypto');
+const { WebSocketServer } = require('ws');
+const { dealHand, applyAction, serializeForViewer } = require('./game/engine');
 
-这是一个带真正后端的德州扑克对战工具：发牌、算牌、下注全部在服务器上完成，
-每个人的底牌只发送给他自己的手机连接，房主和其他玩家都读不到——不同于纯前端
-的 Claude 网页版本（那个只适合朋友局的"轻信任"场景），这个是服务器权威架构。
+const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
 
-## 目录结构
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
 
-```
-poker-server/
-  server.js          启动入口 + WebSocket 消息路由
-  game/
-    handEval.js       比牌算法（含边池计算）
-    engine.js          下注轮状态机（弃牌/跟注/加注/全下/摊牌）
-  public/
-    index.html         首页
-    host.html + host.js  房主控制台
-    play.html + play.js  玩家端
-    style.css           共用样式
-```
+const rooms = new Map(); // roomId -> room
 
-数据全部保存在内存中（没有接数据库），重启服务会清空所有牌局，适合单场活动使用。
-如果需要跨重启保留数据，可以自行接入 Redis/SQLite，我可以在需要时帮你加。
+const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function randomId(len = 6) {
+  let s = '';
+  for (let i = 0; i < len; i++) s += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
+  return s;
+}
+function randomToken() { return crypto.randomBytes(16).toString('hex'); }
 
-## 本地运行
+function send(ws, obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
 
-```bash
-cd poker-server
-npm install
-npm start
-```
+function broadcastRoom(room) {
+  if (room.hostWs) send(room.hostWs, serializeForViewer(room, '__host__'));
+  room.players.forEach(p => { if (p.ws) send(p.ws, serializeForViewer(room, p.id)); });
+}
 
-打开 `http://localhost:3000`，一台设备开"创建牌局"当房主，
-其他设备（同一 WiFi 下用局域网 IP，比如 `http://192.168.1.5:3000`）打开"加入牌局"。
+function requireHost(ws) {
+  const room = rooms.get(ws.roomId);
+  if (!room || !ws.isHost || room.hostWs !== ws) {
+    send(ws, { type: 'error', message: '仅房主可执行该操作' });
+    return null;
+  }
+  return room;
+}
 
-## 部署到公网（几种常见的免费/低价方案）
+wss.on('connection', ws => {
+  ws.on('message', raw => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { return; }
+    handleMessage(ws, msg);
+  });
+  ws.on('close', () => handleDisconnect(ws));
+});
 
-无论选哪个，步骤基本一致：把这个文件夹推到 Git 仓库，连接到平台，
-平台会自动执行 `npm install && npm start`。
+function handleMessage(ws, msg) {
+  switch (msg.type) {
+    case 'host_create': {
+      const roomId = randomId(6);
+      const hostToken = randomToken();
+      const room = {
+        id: roomId,
+        name: (msg.roomName || '德州扑克牌局').slice(0, 40),
+        hostToken,
+        hostWs: ws,
+        smallBlind: Math.max(1, parseInt(msg.smallBlind, 10) || 5),
+        bigBlind: Math.max(2, parseInt(msg.bigBlind, 10) || 10),
+        startingChips: Math.max(20, parseInt(msg.startingChips, 10) || 1000),
+        players: [],
+        stage: 'lobby',
+        community: [],
+        pot: 0,
+        currentBet: 0,
+        dealerIdx: null,
+        handNumber: 0
+      };
+      rooms.set(roomId, room);
+      ws.roomId = roomId; ws.isHost = true;
+      send(ws, { type: 'host_created', roomId, hostToken });
+      broadcastRoom(room);
+      break;
+    }
+    case 'host_auth': {
+      const room = rooms.get(msg.roomId);
+      if (!room || room.hostToken !== msg.hostToken) { send(ws, { type: 'error', message: '房间不存在或房主口令错误' }); return; }
+      room.hostWs = ws; ws.roomId = room.id; ws.isHost = true;
+      broadcastRoom(room);
+      break;
+    }
+    case 'join': {
+      const room = rooms.get((msg.roomId || '').toUpperCase());
+      if (!room) { send(ws, { type: 'error', message: '房间不存在，请检查房间码' }); return; }
+      if (room.stage !== 'lobby') { send(ws, { type: 'error', message: '牌局已开始，暂时无法加入，请等待下一局' }); return; }
+      if (room.players.length >= 9) { send(ws, { type: 'error', message: '房间已满（最多 9 人）' }); return; }
+      const name = (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
+      const id = randomId(8);
+      const token = randomToken();
+      const player = { id, name, token, chips: room.startingChips, cards: [], folded: false, allIn: false, betThisStreet: 0, totalContrib: 0, ws, connected: true };
+      room.players.push(player);
+      ws.roomId = room.id; ws.playerId = id;
+      send(ws, { type: 'joined', roomId: room.id, playerId: id, playerToken: token, roomName: room.name });
+      broadcastRoom(room);
+      break;
+    }
+    case 'rejoin': {
+      const room = rooms.get((msg.roomId || '').toUpperCase());
+      if (!room) { send(ws, { type: 'error', message: '房间不存在' }); return; }
+      const player = room.players.find(p => p.token === msg.playerToken);
+      if (!player) { send(ws, { type: 'error', message: '身份校验失败，请重新加入' }); return; }
+      player.ws = ws; player.connected = true;
+      ws.roomId = room.id; ws.playerId = player.id;
+      send(ws, { type: 'joined', roomId: room.id, playerId: player.id, playerToken: player.token, roomName: room.name });
+      broadcastRoom(room);
+      break;
+    }
+    case 'host_start':
+    case 'host_next_hand': {
+      const room = requireHost(ws); if (!room) return;
+      if (room.players.length < 2) { send(ws, { type: 'error', message: '至少需要 2 名玩家才能开局' }); return; }
+      const result = dealHand(room);
+      if (result && result.error) { send(ws, { type: 'error', message: result.error }); }
+      broadcastRoom(room);
+      break;
+    }
+    case 'host_kick': {
+      const room = requireHost(ws); if (!room) return;
+      room.players = room.players.filter(p => p.id !== msg.playerId);
+      broadcastRoom(room);
+      break;
+    }
+    case 'host_update_blinds': {
+      const room = requireHost(ws); if (!room) return;
+      const sb = Math.max(1, parseInt(msg.sb, 10) || room.smallBlind);
+      const bb = Math.max(sb + 1, parseInt(msg.bb, 10) || room.bigBlind);
+      room.smallBlind = sb; room.bigBlind = bb;
+      broadcastRoom(room);
+      break;
+    }
+    case 'action': {
+      const room = rooms.get(ws.roomId);
+      if (!room || !ws.playerId) return;
+      const result = applyAction(room, ws.playerId, msg.action, msg.amount);
+      if (result && result.error) { send(ws, { type: 'error', message: result.error }); return; }
+      broadcastRoom(room);
+      break;
+    }
+    default:
+      send(ws, { type: 'error', message: '未知消息类型' });
+  }
+}
 
-### Render.com（推荐，免费额度够用）
-1. 把 `poker-server` 文件夹推到 GitHub 仓库
-2. 在 Render 新建 "Web Service"，连接该仓库
-3. Build Command: `npm install`　Start Command: `npm start`
-4. 部署完成后会得到一个 `https://xxx.onrender.com` 地址，把这个地址发给玩家即可
+function handleDisconnect(ws) {
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+  if (ws.isHost) {
+    if (room.hostWs === ws) room.hostWs = null;
+    return;
+  }
+  if (ws.playerId) {
+    const p = room.players.find(x => x.id === ws.playerId);
+    if (p) { p.connected = false; p.ws = null; }
+    broadcastRoom(room);
+  }
+}
 
-### Railway.app
-1. 同样推到 GitHub，New Project → Deploy from repo
-2. Railway 会自动识别 Node.js 项目并运行 `npm start`
+// 定期清理长时间无人（房主和所有玩家都断开）的空房间
+setInterval(() => {
+  for (const [id, room] of rooms.entries()) {
+    const anyConnected = room.hostWs || room.players.some(p => p.ws);
+    if (!anyConnected) {
+      room.emptyStreak = (room.emptyStreak || 0) + 1;
+      if (room.emptyStreak > 120) rooms.delete(id);
+    } else {
+      room.emptyStreak = 0;
+    }
+  }
+}, 30000);
 
-### Fly.io / 自己的云服务器
-标准 Node.js 应用，`npm install && npm start` 即可，注意开放 `PORT` 环境变量
-（平台一般会自动注入，`server.js` 已读取 `process.env.PORT`）。
-
-## 使用流程
-
-1. 房主打开首页 → 创建牌局 → 设置起始筹码 / 小盲 / 大盲 → 得到 6 位房间码和加入链接
-2. 把房间码或链接发给朋友（微信群转发链接最方便）
-3. 每位玩家在自己手机上打开链接 → 输入姓名 → 加入
-4. 房主看到人齐后点"开始游戏"，之后每局结束点"开始下一局"
-5. 轮到谁行动，谁的手机上会亮起操作按钮（弃牌/跟注/加注/全下），其他人看不到他的牌
-
-## 安全说明
-
-- 每位玩家的手牌只通过其专属 WebSocket 连接下发，服务器不会把别人的手牌发给你的设备。
-- 玩家身份用随机 token 保存在浏览器 `localStorage`，刷新页面可自动重连、不掉线不丢筹码。
-- 这套机制能防"看到别人屏幕才能作弊"级别的问题，但不含支付/实名等金融级合规能力，
-  请勿用于真实货币结算的正式赌博场景。
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log('德州扑克对战服务已启动，端口 ' + PORT));
