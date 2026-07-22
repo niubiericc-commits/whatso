@@ -9,12 +9,16 @@
   let lastState = null;
   let lastError = null;
   let connectTimeoutTimer = null;
+  let connSeq = 0;
+  let reconnectTimer = null;
 
   function doReset(){
     localStorage.removeItem('poker_host_roomId');
     localStorage.removeItem('poker_host_token');
     roomId = null; hostToken = null; lastState = null; lastError = null;
     clearTimeout(connectTimeoutTimer);
+    clearTimeout(reconnectTimer);
+    connSeq++; // 让任何还在飞的旧连接消息作废
     render();
   }
 
@@ -27,12 +31,18 @@
   }
 
   function connect(){
+    connSeq++;
+    const myConn = connSeq;
+    clearTimeout(reconnectTimer);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws');
-    ws.onopen = () => {
-      if(roomId && hostToken){ ws.send(JSON.stringify({type:'host_auth', roomId, hostToken})); }
+    const socket = new WebSocket(proto + '://' + location.host + '/ws');
+    ws = socket;
+    socket.onopen = () => {
+      if(myConn!==connSeq) return;
+      if(roomId && hostToken){ socket.send(JSON.stringify({type:'host_auth', roomId, hostToken})); }
     };
-    ws.onmessage = (ev) => {
+    socket.onmessage = (ev) => {
+      if(myConn!==connSeq) return;
       const msg = JSON.parse(ev.data);
       if(msg.type === 'host_created'){
         roomId = msg.roomId; hostToken = msg.hostToken;
@@ -45,7 +55,10 @@
         lastError = msg.message; render();
       }
     };
-    ws.onclose = () => { setTimeout(connect, 2000); };
+    socket.onclose = () => {
+      if(myConn!==connSeq) return;
+      reconnectTimer = setTimeout(connect, 2000);
+    };
   }
 
   function createRoom(name, sb, bb, chips){
