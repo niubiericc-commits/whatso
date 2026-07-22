@@ -120,7 +120,7 @@
     }
 
     const turnSecs = remainingSeconds(st.turnDeadline);
-    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：${turnSecs}s` : '';
+    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：<span id="turnCountdown">${turnSecs}</span>s` : '';
     const communityCards = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
 
     // 以"我"为最下方，环绕椭圆桌排列座位（GGPoker 等主流客户端的经典视角）
@@ -169,7 +169,7 @@
         <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 10px;color:var(--gold-bright);">摊牌结果</h3>
         <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">${reveal}</div>
         ${results}
-        <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? nextSecs+' 秒后自动开始下一局…' : '等待房主开始下一局…'}</p>
+        <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? '<span id="nextHandCountdown">'+nextSecs+'</span> 秒后自动开始下一局…' : '等待房主开始下一局…'}</p>
       </div>`;
     } else if(me && !me.seated){
       panel = `<div class="turn-panel"><p class="section-sub">本局你没有入座（筹码为 0 或本局未参与），请等待下一局。</p></div>`;
@@ -241,8 +241,12 @@
     render();
   })();
 
-  // 每秒刷新一次界面，让倒计时数字实时跳动（不需要等服务器推新消息）
+  // 每秒只更新倒计时的数字文本，不整体重画界面（避免打断正在输入的加注框）
   setInterval(()=>{
-    if(lastState && (lastState.turnDeadline || lastState.nextHandDeadline)) render();
+    if(!lastState) return;
+    const tEl = document.getElementById('turnCountdown');
+    if(tEl && lastState.turnDeadline) tEl.textContent = remainingSeconds(lastState.turnDeadline);
+    const nEl = document.getElementById('nextHandCountdown');
+    if(nEl && lastState.nextHandDeadline) nEl.textContent = remainingSeconds(lastState.nextHandDeadline);
   }, 1000);
 })();
