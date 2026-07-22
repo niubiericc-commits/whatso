@@ -10,6 +10,8 @@
   let roomId = null, playerId = null, playerToken = null;
   let lastState = null;
   let lastError = null;
+  let connSeq = 0;
+  let reconnectTimer = null;
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cardHtml(c){
@@ -19,11 +21,17 @@
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
 
+  // connSeq 保证切换房间时，旧连接的过期消息/自动重连不会污染新房间的状态
   function connect(onOpen){
+    connSeq++;
+    const myConn = connSeq;
+    clearTimeout(reconnectTimer);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws');
-    ws.onopen = () => { if(onOpen) onOpen(); };
-    ws.onmessage = (ev) => {
+    const socket = new WebSocket(proto + '://' + location.host + '/ws');
+    ws = socket;
+    socket.onopen = () => { if(myConn===connSeq && onOpen) onOpen(); };
+    socket.onmessage = (ev) => {
+      if(myConn!==connSeq) return; // 已被更新的连接取代，忽略
       const msg = JSON.parse(ev.data);
       if(msg.type === 'joined'){
         roomId = msg.roomId; playerId = msg.playerId; playerToken = msg.playerToken;
@@ -36,7 +44,10 @@
         lastError = msg.message; render();
       }
     };
-    ws.onclose = () => { setTimeout(()=>tryAutoReconnect(), 2000); };
+    socket.onclose = () => {
+      if(myConn!==connSeq) return; // 已被新连接取代，不用这条旧连接重连
+      reconnectTimer = setTimeout(()=>tryAutoReconnect(), 2000);
+    };
   }
 
   function send(obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
@@ -48,6 +59,7 @@
   }
 
   function joinRoom(rid, name){
+    lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
     const saved = localStorage.getItem(storageKey(rid));
     connect(()=>{
       if(saved){
