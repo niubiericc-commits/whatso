@@ -77,3 +77,31 @@ input:focus{outline:none;border-color:var(--gold);}
 .player-list-row:last-child{border-bottom:none;}
 .copy-row{display:flex;gap:8px;align-items:center;}
 .copy-row input{flex:1;}
+
+/* ---------- poker table (GGPoker 风格椭圆牌桌) ---------- */
+.table-strip{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:var(--gold-bright);margin-bottom:10px;flex-wrap:wrap;gap:4px;}
+.poker-table-wrap{position:relative;width:100%;max-width:520px;margin:0 auto 16px;aspect-ratio:4/3;}
+.poker-table-felt{position:absolute;inset:7%;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 38%, var(--felt-light) 0%, var(--felt) 55%, var(--felt-dark) 100%);
+  border:5px solid var(--gold);box-shadow:0 22px 50px -15px rgba(0,0,0,.7), inset 0 0 50px rgba(0,0,0,.45);}
+.table-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;width:74%;}
+.table-pot{font-family:var(--font-mono);color:var(--gold-bright);font-size:11.5px;margin-bottom:6px;letter-spacing:.03em;white-space:nowrap;}
+.table-community{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;}
+.table-community .pcard{width:30px;height:42px;}
+.table-community .pcard .r{font-size:11px;} .table-community .pcard .s{font-size:9px;}
+.seat-pos{position:absolute;transform:translate(-50%,-50%);width:64px;text-align:center;}
+.seat-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(160deg,var(--felt-light),var(--felt-dark));
+  border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);
+  font-size:16px;color:var(--cream);margin:0 auto 3px;position:relative;box-shadow:0 4px 10px rgba(0,0,0,.4);}
+.seat-pos.turn .seat-avatar{border-color:var(--gold);box-shadow:0 0 0 4px rgba(207,159,51,0.28);}
+.seat-pos.me .seat-avatar{border-color:var(--blue-bright);}
+.seat-pos.folded{opacity:.35;}
+.seat-pname{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.seat-pname .me-tag{color:var(--blue-bright);}
+.seat-chips{font-size:9px;color:var(--gold-bright);font-family:var(--font-mono);}
+.seat-dealer-btn{position:absolute;top:-3px;right:2px;width:15px;height:15px;border-radius:50%;background:var(--gold);
+  color:var(--ink);font-family:var(--font-mono);font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 4px rgba(0,0,0,.4);}
+.seat-bet-chip{font-family:var(--font-mono);font-size:9px;background:rgba(0,0,0,.55);color:var(--gold-bright);
+  padding:1px 6px;border-radius:999px;border:1px solid var(--gold);margin-top:2px;display:inline-block;}
+.seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
