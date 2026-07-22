@@ -1,1 +1,201 @@
+const { newDeck, shuffle, best7, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
 
+function nextActiveSeat(room, idx) {
+  const arr = room.activeSeats;
+  const pos = arr.indexOf(idx);
+  return arr[(pos + 1) % arr.length];
+}
+
+function rotateFrom(room, startIdx) {
+  const arr = room.activeSeats;
+  const pos = arr.indexOf(startIdx);
+  if (pos === -1) return arr.slice();
+  return arr.slice(pos).concat(arr.slice(0, pos));
+}
+
+function postBlind(room, idx, amt) {
+  const p = room.players[idx];
+  const pay = Math.min(amt, p.chips);
+  p.chips -= pay; p.betThisStreet += pay; p.totalContrib += pay; room.pot += pay;
+  if (p.chips === 0) p.allIn = true;
+}
+
+function dealHand(room) {
+  room.activeSeats = room.players.map((p, i) => i).filter(i => room.players[i].chips > 0);
+  if (room.activeSeats.length < 2) {
+    room.stage = 'lobby';
+    return { error: '筹码大于 0 的玩家不足 2 人，无法开局' };
+  }
+  room.dealerIdx = (room.dealerIdx == null) ? room.activeSeats[0] : nextActiveSeat(room, room.dealerIdx);
+  if (!room.activeSeats.includes(room.dealerIdx)) room.dealerIdx = room.activeSeats[0];
+
+  room.players.forEach(p => {
+    p.cards = []; p.folded = p.chips <= 0; p.allIn = false; p.betThisStreet = 0; p.totalContrib = 0;
+  });
+  room.pot = 0; room.community = []; room.stage = 'preflop'; room.results = null;
+  room.handNumber = (room.handNumber || 0) + 1;
+  room.deck = shuffle(newDeck());
+  room.activeSeats.forEach(i => { room.players[i].cards = [room.deck.pop(), room.deck.pop()]; });
+
+  let sbIdx, bbIdx, startIdx;
+  if (room.activeSeats.length === 2) {
+    sbIdx = room.dealerIdx; bbIdx = nextActiveSeat(room, room.dealerIdx); startIdx = room.dealerIdx;
+  } else {
+    sbIdx = nextActiveSeat(room, room.dealerIdx); bbIdx = nextActiveSeat(room, sbIdx); startIdx = nextActiveSeat(room, bbIdx);
+  }
+  postBlind(room, sbIdx, room.smallBlind);
+  postBlind(room, bbIdx, room.bigBlind);
+  room.currentBet = room.bigBlind; room.sbIdx = sbIdx; room.bbIdx = bbIdx;
+  room.actionQueue = rotateFrom(room, startIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
+  room.turn = room.actionQueue[0];
+  return {};
+}
+
+function checkSinglePlayerLeft(room) {
+  const alive = room.players.filter(p => !p.folded);
+  if (alive.length === 1) {
+    alive[0].chips += room.pot;
+    room.results = [{ amount: room.pot, winners: [alive[0].name], handName: '（其余玩家已弃牌）' }];
+    room.pot = 0; room.stage = 'showdown'; room.turn = null;
+    return true;
+  }
+  return false;
+}
+
+function proceed(room) {
+  if (checkSinglePlayerLeft(room)) return;
+  if (room.actionQueue.length === 0) { advanceStreet(room); return; }
+  room.turn = room.actionQueue[0];
+}
+
+function advanceStreet(room) {
+  const stillToAct = room.players.filter((p, i) => room.activeSeats.includes(i) && !p.folded && !p.allIn).length;
+  if (room.stage === 'river' || stillToAct <= 1) {
+    while (room.community.length < 5) room.community.push(room.deck.pop());
+    runShowdown(room);
+    return;
+  }
+  if (room.stage === 'preflop') { room.stage = 'flop'; room.community.push(room.deck.pop(), room.deck.pop(), room.deck.pop()); }
+  else if (room.stage === 'flop') { room.stage = 'turn'; room.community.push(room.deck.pop()); }
+  else if (room.stage === 'turn') { room.stage = 'river'; room.community.push(room.deck.pop()); }
+  room.players.forEach(p => p.betThisStreet = 0);
+  room.currentBet = 0;
+  room.actionQueue = rotateFrom(room, room.dealerIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
+  if (room.actionQueue.length === 0) { advanceStreet(room); return; }
+  room.turn = room.actionQueue[0];
+}
+
+function runShowdown(room) {
+  const alive = room.players.filter(p => !p.folded);
+  alive.forEach(p => p.handVal = best7([...p.cards, ...room.community]));
+  const pots = computeSidePots(room.players);
+  room.results = [];
+  pots.forEach(pot => {
+    const eligible = pot.eligible.filter(p => !p.folded);
+    let winners = [], bestVal = null;
+    eligible.forEach(p => {
+      if (!bestVal || compareVal(p.handVal, bestVal) > 0) { bestVal = p.handVal; winners = [p]; }
+      else if (compareVal(p.handVal, bestVal) === 0) { winners.push(p); }
+    });
+    const share = Math.floor(pot.amount / winners.length);
+    let rem = pot.amount - share * winners.length;
+    winners.forEach((w, i) => { w.chips += share + (i < rem ? 1 : 0); });
+    room.results.push({ amount: pot.amount, winners: winners.map(w => w.name), handName: bestVal ? HAND_NAMES[bestVal[0]] : '' });
+  });
+  room.pot = 0; room.stage = 'showdown'; room.turn = null;
+}
+
+function applyAction(room, playerId, action, amount) {
+  const idx = room.players.findIndex(p => p.id === playerId);
+  if (idx === -1) return { error: '玩家不存在' };
+  if (room.stage === 'lobby' || room.stage === 'showdown') return { error: '当前不在下注阶段' };
+  if (room.turn !== idx) return { error: '还没轮到你行动' };
+  const p = room.players[idx];
+
+  if (action === 'fold') {
+    p.folded = true;
+    room.actionQueue = room.actionQueue.filter(i => i !== idx);
+    proceed(room); return {};
+  }
+  if (action === 'check' || action === 'call') {
+    const need = room.currentBet - p.betThisStreet;
+    if (action === 'check' && need > 0) return { error: '当前有下注，无法过牌' };
+    if (need > 0) {
+      const pay = Math.min(need, p.chips);
+      p.chips -= pay; p.betThisStreet += pay; p.totalContrib += pay; room.pot += pay;
+      if (p.chips === 0) p.allIn = true;
+    }
+    room.actionQueue = room.actionQueue.filter(i => i !== idx);
+    proceed(room); return {};
+  }
+  if (action === 'raise') {
+    const toAmount = Math.floor(amount);
+    if (!toAmount || toAmount <= room.currentBet) return { error: '加注金额必须大于当前下注' };
+    const capped = Math.min(toAmount, p.betThisStreet + p.chips);
+    const need = capped - p.betThisStreet;
+    if (need <= 0) return { error: '筹码不足' };
+    p.chips -= need; p.betThisStreet += need; p.totalContrib += need; room.pot += need;
+    if (p.chips === 0) p.allIn = true;
+    const isRaise = capped > room.currentBet;
+    if (isRaise) {
+      room.currentBet = capped;
+      room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
+    } else {
+      room.actionQueue = room.actionQueue.filter(i => i !== idx);
+    }
+    proceed(room); return {};
+  }
+  if (action === 'allin') {
+    const toAmount = p.betThisStreet + p.chips;
+    const need = p.chips;
+    if (need <= 0) return { error: '没有可用筹码' };
+    p.chips = 0; p.betThisStreet += need; p.totalContrib += need; room.pot += need; p.allIn = true;
+    if (toAmount > room.currentBet) {
+      room.currentBet = toAmount;
+      room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
+    } else {
+      room.actionQueue = room.actionQueue.filter(i => i !== idx);
+    }
+    proceed(room); return {};
+  }
+  return { error: '未知操作' };
+}
+
+function serializeForViewer(room, viewerId) {
+  return {
+    type: 'state',
+    roomId: room.id,
+    name: room.name,
+    stage: room.stage,
+    pot: room.pot,
+    currentBet: room.currentBet,
+    community: room.community || [],
+    handNumber: room.handNumber || 0,
+    dealerIdx: room.dealerIdx,
+    sbIdx: room.sbIdx,
+    bbIdx: room.bbIdx,
+    turn: room.turn,
+    smallBlind: room.smallBlind,
+    bigBlind: room.bigBlind,
+    you: viewerId,
+    players: room.players.map((p, i) => {
+      const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
+      const revealCards = (p.id === viewerId) || (room.stage === 'showdown' && !p.folded);
+      return {
+        id: p.id,
+        name: p.name,
+        chips: p.chips,
+        folded: p.folded,
+        allIn: p.allIn,
+        betThisStreet: p.betThisStreet,
+        connected: !!p.connected,
+        seated,
+        hasCards: !!(p.cards && p.cards.length),
+        cards: revealCards ? (p.cards || []) : []
+      };
+    }),
+    results: room.results || null
+  };
+}
+
+module.exports = { dealHand, applyAction, serializeForViewer };
