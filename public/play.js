@@ -300,16 +300,16 @@
     }
   }
 
-  // 常驻顶部导航：登录界面之外的三大板块之间可以直接切换，不用先"返回"
+  // 底部固定导航：登录界面之外的三大板块之间可以直接切换，不用先"返回"
   function renderTopNav(active){
     const tabs = [
       { id:'join', icon:'🏠', label:'大厅' },
       { id:'tournaments', icon:'🏆', label:'锦标赛' },
       { id:'profile', icon:'👤', label:'我的' }
     ];
-    return `<div class="sub-tabs" style="margin-bottom:14px;">
-      ${tabs.map(tb=>`<button class="${active===tb.id?'active':''}" data-nav="${tb.id}">${tb.icon} ${tb.label}</button>`).join('')}
-    </div>`;
+    return `<div class="bottom-nav"><div class="bottom-nav-inner">
+      ${tabs.map(tb=>`<button class="${active===tb.id?'active':''}" data-nav="${tb.id}"><span class="ic">${tb.icon}</span>${tb.label}</button>`).join('')}
+    </div></div>`;
   }
   function bindTopNav(){
     document.querySelectorAll('[data-nav]').forEach(b=>{
@@ -442,10 +442,17 @@
         const counts = { omaha:0, holdem:0, free:0 };
         tournamentList.forEach(t => counts[categorize(t)]++);
 
+        const STATUS_BADGE = { registering:'<span class="chip-badge live"><span class="dot"></span>报名中</span>', running:'<span class="chip-badge gold">进行中</span>', finished:'<span class="chip-badge muted">已结束</span>' };
         const rows = filtered.map(t => `
           <div class="card">
-            <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)} <span class="seat-allin-tag" style="background:var(--gold);color:var(--ink);">${t.gameType==='omaha'?'Omaha':"Hold'em"}</span></h3>
-            <p class="section-sub" style="margin:0 0 8px;">${t.status==='registering'?'报名中':t.status==='running'?'进行中':'已结束'} · ${t.ticketPrice===0?'免费':'门票 '+t.ticketPrice+' 俱乐部积分'} · 已报名 ${t.registeredCount} 人</p>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+              <h3 style="font-family:var(--font-display);font-size:20px;margin:0;color:var(--cream);">${esc(t.name)}</h3>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="chip-badge teal">${t.gameType==='omaha'?'Omaha':"Hold'em"}</span>
+                ${STATUS_BADGE[t.status]||''}
+              </div>
+            </div>
+            <p class="section-sub" style="margin:0 0 8px;">${t.ticketPrice===0?'🎁 免费参赛':'门票 '+t.ticketPrice+' 俱乐部积分'} · 已报名 ${t.registeredCount} 人</p>
             <p class="section-sub" style="margin:0 0 10px;">🥇 ${esc(t.prizes[1])}　🥈 ${esc(t.prizes[2])}　🥉 ${esc(t.prizes[3])}</p>
             ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-reg="${t.id}">${t.ticketPrice===0?'免费报名':'花 '+t.ticketPrice+' 积分报名'}</button>` : ''}
             ${t.status==='finished' && t.results ? `<div class="hint-box">${[1,2,3].map(r=>t.results[r]?(r===1?'🥇':r===2?'🥈':'🥉')+esc(t.results[r].username):'').filter(Boolean).join('　')}</div>` : ''}
@@ -712,10 +719,13 @@
       const lastRoom = prefillRoom || localStorage.getItem('poker_last_room') || '';
 
       const accountBlock = account ? `
-        <div class="card">
-          <h2 class="section-title" style="font-size:20px;">${esc(account.username)}</h2>
-          <p class="section-sub">筹码积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
-          <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button></div>
+        <div class="card" style="display:flex;align-items:center;gap:14px;">
+          <div class="seat-avatar avatar-c2" style="width:46px;height:46px;font-size:20px;flex:none;">${esc((account.username||'?').charAt(0).toUpperCase())}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:var(--font-display);font-size:19px;color:var(--cream);">${esc(account.username)}</div>
+            <div class="section-sub" style="margin:0;">筹码 <strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分 <strong style="color:var(--gold-bright);">${accountClubPoints}</strong></div>
+          </div>
+          <button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button>
         </div>` : `
         <div class="card">
           <h2 class="section-title" style="font-size:20px;">${t('account_login')}</h2>
@@ -729,29 +739,38 @@
         </div>`;
 
       if(!publicTablesLoaded){ publicTablesLoaded = true; refreshPublicTables(); }
-      const tableRows = publicTables.map(tb => `
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-            <div>
-              <h3 style="font-family:var(--font-display);font-size:19px;margin:0 0 4px;color:var(--gold-bright);">${esc(tb.name)}</h3>
-              <p class="section-sub" style="margin:0;">盲注 ${tb.smallBlind}/${tb.bigBlind} · 起始筹码 ${tb.startingChips} · 在座 ${tb.playerCount}/${tb.maxPlayers}</p>
+      const STAKE_ICON_COLORS = ['#e2ab3f','#2dd4bf','#5c8fc9','#e0576a'];
+      const tableRows = publicTables.map((tb,i) => `
+        <div class="list-tile">
+          <div class="stakes-dot" style="background:linear-gradient(150deg, ${STAKE_ICON_COLORS[i%4]}, #1b1f2b);">${tb.smallBlind}/${tb.bigBlind}</div>
+          <div class="info">
+            <div class="title-row">
+              <h3>${esc(tb.name)}</h3>
+              ${tb.playerCount>0?'<span class="chip-badge live"><span class="dot"></span>进行中</span>':'<span class="chip-badge muted">等待开局</span>'}
             </div>
-            <button class="btn btn-primary btn-sm auto" data-jointable="${tb.id}" ${tb.playerCount>=tb.maxPlayers?'disabled':''}>${tb.playerCount>=tb.maxPlayers?'已满':'坐下'}</button>
+            <div class="meta">起始筹码 ${tb.startingChips} · 在座 ${tb.playerCount}/${tb.maxPlayers}</div>
+            <div class="seat-fill-bar"><div class="fill" style="width:${Math.min(100,(tb.playerCount/tb.maxPlayers)*100)}%;"></div></div>
           </div>
+          <button class="btn btn-primary btn-sm auto" data-jointable="${tb.id}" ${tb.playerCount>=tb.maxPlayers?'disabled':''}>${tb.playerCount>=tb.maxPlayers?'已满':'坐下'}</button>
         </div>`).join('') || '<div class="card"><p class="section-sub">目前没有公开的现金桌，创建一桌并勾选"公开"就会出现在这里，或者用房间码加入私密桌。</p></div>';
 
       app.innerHTML = `
-        ${renderTopNav('join')}
         ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
+        <div class="hero-banner">
+          <div class="hero-eyebrow">POKERGO · LIVE LOBBY</div>
+          <h1 class="hero-title">找一桌，坐下就玩</h1>
+          <p class="hero-sub">隐藏底牌、真实发牌、公平摊牌——挑一桌现金局直接坐下，或者去锦标赛赢奖品。</p>
+        </div>
         ${accountBlock}
-        <h2 class="section-title" style="font-size:20px;margin:0 0 10px;">🃏 现金桌</h2>
+        <h2 class="section-title" style="font-size:19px;margin:4px 0 10px;">🃏 现金桌</h2>
         ${tableRows}
         <div class="card">
-          <h2 class="section-title" style="font-size:16px;margin:0 0 6px;">用房间码加入私密桌</h2>
+          <h2 class="section-title" style="font-size:15px;margin:0 0 6px;">用房间码加入私密桌</h2>
           <div class="field"><label>${t('room_code')}</label><input type="text" id="roomInput" value="${esc(lastRoom)}" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:20px;"></div>
           ${account ? '' : `<div class="field"><label>${t('your_name_guest')}</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
           <div class="btn-row"><button class="btn btn-ghost" id="joinBtn">${t('join_btn')}</button></div>
-        </div>`;
+        </div>
+        ${renderTopNav('join')}`;
 
       bindTopNav();
       document.querySelectorAll('[data-jointable]').forEach(b=>{
