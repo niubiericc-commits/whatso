@@ -409,7 +409,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
           <div>
             <h3 style="font-family:var(--font-display);font-size:22px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)} <span class="seat-allin-tag" style="background:var(--gold);color:var(--ink);">${t.gameType==='omaha'?'Omaha':"Hold'em"}</span></h3>
-            <p class="section-sub" style="margin:0;">状态：${TSTATUS_LABEL[t.status]||t.status} · 门票 ${t.ticketPrice} 俱乐部积分 · 已报名 ${t.registeredCount} 人 · 在场 ${t.remainingCount} 人 · 每桌最多 ${t.maxTableSize} 人</p>
+            <p class="section-sub" style="margin:0;">状态：${TSTATUS_LABEL[t.status]||t.status} · 门票 ${t.ticketPrice} 俱乐部积分 · 已报名 ${t.registeredCount} 人 · 在场 ${t.remainingCount} 人 · 每桌最多 ${t.maxTableSize} 人${t.scheduledStart?' · 预定开始 '+new Date(t.scheduledStart).toLocaleString('zh-CN'):''}</p>
           </div>
           ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-start="${t.id}">开赛</button>` : ''}
         </div>
@@ -539,6 +539,8 @@
         <div class="field"><label>🥇 冠军奖品</label><input type="text" id="tPrize1" value="${esc(dv('tPrize1',''))}" placeholder="例如：平板电脑"></div>
         <div class="field"><label>🥈 亚军奖品</label><input type="text" id="tPrize2" value="${esc(dv('tPrize2',''))}" placeholder="例如：机械键盘"></div>
         <div class="field"><label>🥉 季军奖品</label><input type="text" id="tPrize3" value="${esc(dv('tPrize3',''))}" placeholder="例如：扑克筹码套装"></div>
+        <div class="field"><label>预定开始时间（留空 = 只能手动点"开赛"）</label><input type="datetime-local" id="tSchedule" value="${esc(dv('tSchedule',''))}"></div>
+        <p class="section-sub" style="margin:-6px 0 10px;">设置了时间的话，到点后系统会在报名人数达到 2 人以上时自动开赛，已报名的玩家会收到弹窗提醒；你也可以随时手动提前点"开赛"。</p>
         <div class="btn-row"><button class="btn btn-primary" id="createTBtn">创建赛事</button></div>
       </div>
 
@@ -707,16 +709,17 @@
           bigBlind: parseInt(document.getElementById('tBb').value,10)||10,
           prize1: document.getElementById('tPrize1').value.trim(),
           prize2: document.getElementById('tPrize2').value.trim(),
-          prize3: document.getElementById('tPrize3').value.trim()
+          prize3: document.getElementById('tPrize3').value.trim(),
+          scheduledStart: document.getElementById('tSchedule').value || null
         });
         tournaments = r.tournaments; lastError = null;
-        ['tName','tGameType','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3'].forEach(id=>delete formDrafts[id]);
+        ['tName','tGameType','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3','tSchedule'].forEach(id=>delete formDrafts[id]);
       }catch(e){ lastError = e.message; }
       render();
     };
     // 输入框内容实时记进草稿，不触发重画——这样后台每 4 秒自动刷新赛事列表时，
     // 重新画出来的表单会用草稿里的最新值填充，不会把正在打的字冲掉。
-    bindDrafts(['tName','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3',
+    bindDrafts(['tName','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3','tSchedule',
       'lookupUser','adjustDelta','promoTitle','promoBody','pkgAmount','pkgTickets','pkgClubPoints','pkgNote','tierVipText','tierSvipText']);
     const tGameTypeEl = document.getElementById('tGameType');
     if(tGameTypeEl) tGameTypeEl.onchange = () => { formDrafts.tGameType = tGameTypeEl.value; };
@@ -736,6 +739,14 @@
   function render(){
     const app = document.getElementById('app');
     if(!app) return;
+
+    // 重画前先记住当前正在输入的输入框（id + 光标位置），重画后原样恢复焦点。
+    // 之前只保住了"数值"，但重画会让输入框整个被替换掉、光标跳走，打字体验上还是感觉"被打断"。
+    const active = document.activeElement;
+    const activeId = active && active.id;
+    const selStart = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+    const selEnd = active && typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
+
     const backLink = pageMode!=='menu' ? `<button class="home-btn" id="backMenuBtn">← 返回菜单</button>` : '';
     const titleMap = { menu:'房主 / 俱乐部控制台', host:'房主控制台', club:'俱乐部后台' };
     document.getElementById('pageTitle').textContent = titleMap[pageMode];
@@ -756,6 +767,15 @@
 
     if(pageMode==='host') bindHostEvents();
     if(pageMode==='club') bindClubEvents();
+
+    // 恢复焦点和光标位置
+    if(activeId){
+      const el = document.getElementById(activeId);
+      if(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA')){
+        el.focus();
+        if(selStart!==null && el.setSelectionRange){ try{ el.setSelectionRange(selStart, selEnd); }catch(e){} }
+      }
+    }
   }
 
   // 每秒只更新倒计时的数字文本，不整体重画界面（避免打断正在输入的框）
