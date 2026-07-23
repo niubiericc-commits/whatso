@@ -163,8 +163,8 @@
   }
 
   // ==================== 房主：创建牌局 ====================
-  function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers){
-    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers}));
+  function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount){
+    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers, botCount}));
   }
   function doResetHost(){
     localStorage.removeItem('poker_host_roomId');
@@ -190,6 +190,8 @@
             <div style="flex:1"><label>每人思考时间（秒，0 = 不限时）</label><input type="number" id="rTimer" value="30" min="0"></div>
             <div style="flex:1"><label>最大人数</label><input type="number" id="rMaxPlayers" value="9" min="2" max="9"></div>
           </div>
+          <div class="field"><label>机器人补位数量（0 = 不加机器人）</label><input type="number" id="rBotCount" value="0" min="0" max="8"></div>
+          <p class="section-sub" style="margin:-6px 0 10px;">机器人身份随机（名字、头像风格跟真人一样），每人筹码 20,000～40,000 随机分配，打法基于牌力和底池赔率，会诈唬也会弃牌，不是乱按。</p>
           <div class="setting-row">
             <div><div>公开这桌</div><div class="section-sub" style="margin:0;">玩家在大厅页面能直接看到并坐下，不需要房间码/链接</div></div>
             <label class="switch"><input type="checkbox" id="rPublic" checked><span></span></label>
@@ -328,7 +330,8 @@
       const timer = Math.max(0, parseInt(document.getElementById('rTimer').value,10)||0);
       const maxPlayers = Math.min(9, Math.max(2, parseInt(document.getElementById('rMaxPlayers').value,10)||9));
       const isPublic = document.getElementById('rPublic').checked;
-      createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers);
+      const botCount = Math.min(8, Math.max(0, parseInt(document.getElementById('rBotCount').value,10)||0));
+      createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount);
     };
     const resetBtn = document.getElementById('resetBtn');
     if(resetBtn) resetBtn.onclick = doResetHost;
