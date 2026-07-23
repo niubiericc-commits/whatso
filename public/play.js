@@ -51,6 +51,19 @@
   }
   let lastTurnWasMine = false;
   let lastSoundedShowdownHand = null;
+  let toastMsg = null;
+  let toastTimer = null;
+  function showToast(msg){
+    toastMsg = msg;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>{ toastMsg = null; render(); }, 4500);
+    render();
+  }
+  function renderToast(){
+    const host = document.getElementById('toastHost');
+    if(!host) return;
+    host.innerHTML = toastMsg ? `<div class="toast-pop">${esc(toastMsg)}</div>` : '';
+  }
 
   const STAGE_LABEL_KEYS = { lobby:'stage_lobby', preflop:'stage_preflop', flop:'stage_flop', turn:'stage_turn', river:'stage_river', showdown:'stage_showdown' };
   function stageLabel(stage){ return t(STAGE_LABEL_KEYS[stage] || stage); }
@@ -173,7 +186,9 @@
         accountPoints = msg.points;
         accountClubPoints = msg.clubPoints;
         localStorage.setItem('pokergo_account', JSON.stringify(account));
-        lastError = null; render();
+        lastError = null;
+        if(msg.isNewAccount) showToast('🎉 欢迎加入！新人注册赠送 ' + msg.clubPoints + ' 积分，去大厅坐下开打吧');
+        render();
       } else if(msg.type === 'tournament_list'){
         tournamentList = msg.tournaments; render();
       } else if(msg.type === 'tournament_registered'){
@@ -397,6 +412,7 @@
   }
 
   function render(){
+    renderToast();
     const app = document.getElementById('app');
     const outerApp = document.querySelector('.app');
     if(outerApp){
@@ -596,7 +612,8 @@
             {id:'emerald', label:curLang==='en'?'Emerald':'翡翠绿', color:'#184a37'},
             {id:'sapphire', label:curLang==='en'?'Sapphire':'蓝宝石', color:'#164a7a'},
             {id:'ruby', label:curLang==='en'?'Ruby':'红宝石', color:'#6e1a26'},
-            {id:'midnight', label:curLang==='en'?'Midnight':'午夜紫', color:'#2a2a52'}
+            {id:'midnight', label:curLang==='en'?'Midnight':'午夜紫', color:'#2a2a52'},
+            {id:'royal', label:curLang==='en'?'Royal Purple':'皇家紫', color:'#4a1f7a'}
           ];
           tabBody = `
             <div class="card">
@@ -852,6 +869,7 @@
     const meIdx = st.players.findIndex(p=>p.id===playerId);
     const startIdx = meIdx>=0 ? meIdx : 0;
     const rx=42, ry=37;
+    const winnerNames = st.stage==='showdown' ? new Set((st.results||[]).flatMap(r=>r.winners)) : new Set();
     const seatsHtml = st.players.map((p,orig)=>{
       if(!p.seated && st.stage!=='showdown') return '';
       const k = (orig - startIdx + n) % n;
@@ -859,7 +877,14 @@
       const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
+      const isWinner = winnerNames.has(p.name);
+      const winBurstHtml = (isWinner && p.cards && p.cards.length) ? `
+        <div class="win-burst">
+          <div class="win-cards">${p.cards.map(c=>cardHtml(c)).join('')}</div>
+          <div class="win-label">WIN</div>
+        </div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
+        ${winBurstHtml}
         <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
