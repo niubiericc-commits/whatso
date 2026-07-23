@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokerGo · 俱乐部后台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app wide">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-eyebrow">POKERGO · CLUB DESK</div>
+      <h1>俱乐部后台</h1>
+    </div>
+  </div>
+  <div id="app"><div class="loading-screen">正在加载页面脚本…</div></div>
+</div>
+<noscript><div style="padding:20px;color:#fff;">此页面需要开启 JavaScript 才能使用。</div></noscript>
+<script>
+  // 如果 club.js 因为任何原因加载失败（被拦截/网络问题/404），
+  // 3 秒后还看不到真正的界面就把这行提示换成明确的报错，而不是一直空转。
+  window.addEventListener('error', function(e){
+    if(e && e.filename && e.filename.indexOf('club.js') !== -1){
+      var el = document.getElementById('app');
+      if(el) el.innerHTML = '<div class="card"><div class="err-box">页面脚本加载失败：' + (e.message||'未知错误') + '<br>文件：' + e.filename + '</div></div>';
+    }
+  });
+  setTimeout(function(){
+    var el = document.getElementById('app');
+    if(el && el.textContent.indexOf('正在加载页面脚本') !== -1){
+      el.innerHTML = '<div class="card"><div class="err-box">club.js 脚本 3 秒内没有执行成功。<br>可能原因：浏览器插件/广告拦截器拦截了这个脚本文件，或者网络问题。<br>建议：换一个浏览器，或者关闭广告拦截类插件后重试，或者用手机流量（不用WiFi）试一次。</div></div>';
+    }
+  }, 3000);
+</script>
+<script src="/club.js"></script>
+</body>
+</html>
