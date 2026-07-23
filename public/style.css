@@ -266,14 +266,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 /* ---------- poker table (只有这里保留绒布质感——真正坐上牌桌才用) ---------- */
 .table-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 
-/* ---------- 左下角战报框：显示这桌最近发生的事 ---------- */
-.table-log-box{position:absolute;left:2%;bottom:3%;z-index:6;width:min(46%,220px);max-height:30%;overflow-y:auto;
-  background:rgba(8,10,14,0.72);backdrop-filter:blur(6px);border:1px solid var(--border-strong);border-radius:10px;
-  padding:7px 9px;font-family:var(--font-mono);font-size:9.5px;line-height:1.65;color:var(--muted);
-  scrollbar-width:thin;}
+/* ---------- 左下角战报框：固定钉在屏幕左下角，跟牌桌图形脱钩，保证不挡住任何座位；
+   底部避开固定导航栏的高度 ---------- */
+.table-log-box{position:fixed;left:12px;bottom:92px;z-index:35;width:min(58vw,260px);max-height:26vh;overflow-y:auto;
+  background:rgba(8,10,14,0.82);backdrop-filter:blur(8px);border:1px solid var(--border-strong);border-radius:12px;
+  padding:9px 11px;font-family:var(--font-mono);font-size:10.5px;line-height:1.7;color:var(--muted);
+  box-shadow:var(--shadow-pop);scrollbar-width:thin;}
 .table-log-box .log-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .table-log-box .log-line:first-child{color:var(--gold-bright);font-weight:700;}
-@media (min-width:860px){ .table-log-box{font-size:11px;width:min(30%,260px);padding:9px 11px;} }
+@media (min-width:860px){ .table-log-box{font-size:12px;width:min(24vw,300px);max-height:32vh;padding:11px 13px;bottom:24px;left:20px;} }
 .balance-pill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border-strong);
   border-radius:999px;padding:6px 14px 6px 8px;font-family:var(--font-mono);font-weight:700;font-size:14px;color:var(--gold-bright);box-shadow:var(--shadow-card);}
 .balance-pill .coin{width:20px;height:20px;border-radius:50%;flex:none;background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);box-shadow:0 0 0 2px var(--ink);}
