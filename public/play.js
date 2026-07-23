@@ -420,6 +420,28 @@
   }
 
   function render(){
+    // 重画前先记住正在输入的输入框（id + 内容 + 光标位置），重画后原样恢复。
+    // 不管这次重画是什么原因触发的（对手行动、机器人思考、心跳消息……），都不会打断正在打字。
+    const active = document.activeElement;
+    const activeId = active && active.id;
+    const activeVal = active && 'value' in active ? active.value : null;
+    const selStart = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+    const selEnd = active && typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
+
+    renderInner();
+
+    if(activeId){
+      const el = document.getElementById(activeId);
+      if(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA')){
+        if(activeVal!==null && el.value!==activeVal) el.value = activeVal;
+        el.focus();
+        if(selStart!==null && el.setSelectionRange){ try{ el.setSelectionRange(selStart, selEnd); }catch(e){} }
+        if(typeof el.oninput === 'function') el.oninput(); // 顺带把跟注按钮的"加注"联动状态也刷新一下
+      }
+    }
+  }
+
+  function renderInner(){
     renderToast();
     const app = document.getElementById('app');
     const outerApp = document.querySelector('.app');
