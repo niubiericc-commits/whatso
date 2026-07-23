@@ -105,7 +105,7 @@
   function cardHtml(c){
     const red = (c.s==='h'||c.s==='d');
     const label = RANK_LABEL[c.r] || c.r;
-    return `<div class="pcard ${red?'red':'black'}"><span class="corner">${label}${SUIT_SYMBOL[c.s]}</span><span class="r">${label}</span><span class="s">${SUIT_SYMBOL[c.s]}</span></div>`;
+    return `<div class="pcard ${red?'red':'black'}"><span class="r">${label}</span><span class="s">${SUIT_SYMBOL[c.s]}</span></div>`;
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
   function remainingSeconds(deadline){ return deadline ? Math.max(0, Math.ceil((deadline - Date.now())/1000)) : null; }
@@ -979,13 +979,21 @@
     if(st.stage==='showdown'){
       (st.results||[]).forEach(r=>{ r.winners.forEach(wn=>{ winnerAmounts[wn] = (winnerAmounts[wn]||0) + Math.floor(r.amount/r.winners.length); }); });
     }
+    const ACTION_LABEL = { fold:{zh:'弃牌',en:'FOLD'}, check:{zh:'过牌',en:'CHECK'}, call:{zh:'跟注',en:'CALL'}, raise:{zh:'加注',en:'RAISE'}, allin:{zh:'全下',en:'ALL IN'} };
+    const curLangForAction = getStrSetting('lang','zh');
     const seatPositions = {};
+    const betChipsHtml = [];
     const seatsHtml = st.players.map((p,orig)=>{
       if(!p.seated && st.stage!=='showdown') return '';
       const k = (orig - startIdx + n) % n;
       const angle = Math.PI/2 + (k/n)*2*Math.PI;
       const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
       seatPositions[p.name] = {left, top};
+      // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目
+      if(p.betThisStreet>0){
+        const chipLeft = left + (50-left)*0.4, chipTop = top + (48-top)*0.4;
+        betChipsHtml.push(`<div class="seat-bet-chip" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
+      }
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
       const isWinner = winnerNames.has(p.name);
@@ -996,14 +1004,15 @@
           ${p.handName ? `<div class="win-handname">${esc(p.handName)}</div>` : ''}
         </div>
         <div class="win-amount-pop">+${winnerAmounts[p.name]||0}</div>` : '';
+      const actionLabel = (!isWinner && p.lastAction && ACTION_LABEL[p.lastAction]) ? `<div class="action-flag action-${p.lastAction}">${ACTION_LABEL[p.lastAction][curLangForAction==='en'?'en':'zh']}</div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
         ${winBurstHtml}
+        ${actionLabel}
         <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
           <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="seat-allin-tag" style="background:var(--muted);color:var(--ink);">托管中</span>':''}</div>
         </div>
-        ${p.betThisStreet>0 ? `<div class="seat-bet-chip">${p.betThisStreet}</div>` : ''}
       </div>`;
     }).join('');
 
@@ -1027,6 +1036,8 @@
           </div>
         </div>
         ${seatsHtml}
+        ${betChipsHtml.join('')}
+        <div class="table-log-box">${(st.log||[]).map(l=>`<div class="log-line">${esc(l.text)}</div>`).join('') || '<div class="log-line">牌局开始…</div>'}</div>
       </div>`;
 
     let panel = '';
