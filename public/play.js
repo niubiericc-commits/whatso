@@ -188,6 +188,12 @@
       } else if(msg.type === 'tournament_assigned'){
         localStorage.removeItem('pokergo_pending_tournament');
         pendingTournamentId = null;
+        try{
+          if('Notification' in window && Notification.permission==='granted'){
+            new Notification('锦标赛开始了！', { body: '正在带你进入分配到的牌桌…' });
+          }
+        }catch(e){}
+        alert('🏆 锦标赛开始了！点击确定进入你分配到的牌桌。');
         connect(()=> send({type:'rejoin', roomId: msg.roomId, playerToken: msg.playerToken}));
       } else if(msg.type === 'tournament_eliminated'){
         localStorage.removeItem('pokergo_pending_tournament');
@@ -392,6 +398,11 @@
 
   function render(){
     const app = document.getElementById('app');
+    const outerApp = document.querySelector('.app');
+    if(outerApp){
+      const inTable = !!(roomId && playerId && lastState && lastState.stage && lastState.stage!=='lobby');
+      outerApp.classList.toggle('app-table-wide', inTable);
+    }
 
     if(!roomId || !playerId){
       // 分支1：赛事已经结束或本人已被淘汰，展示结果
@@ -421,12 +432,17 @@
       // 分支2：已报名，正在等待管理员开赛 / 等待系统给自己分桌
       if(pendingTournamentId){
         startTournamentPolling();
+        if(!tournamentList.length) fetchTournamentList();
+        const waitingInfo = tournamentList.find(x=>x.id===pendingTournamentId);
+        const schedHtml = waitingInfo && waitingInfo.scheduledStart
+          ? `<p class="section-sub">预定开始时间：<strong style="color:var(--gold-bright);">${new Date(waitingInfo.scheduledStart).toLocaleString('zh-CN')}</strong>　到点会自动开赛，并弹窗提醒你。</p>`
+          : `<p class="section-sub">等待管理员手动开赛，开赛后会弹窗提醒并自动带你进入分到的牌桌。</p>`;
         app.innerHTML = `
           <div class="card">
             <h2 class="section-title">已报名</h2>
             <div class="waiting-box">
               <div class="big">🎟️</div>
-              等待管理员开赛，开赛后会自动带你进入分到的牌桌…
+              ${schedHtml}
             </div>
             <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="cancelWaitBtn">取消等待（不退票）</button></div>
           </div>`;
@@ -452,7 +468,7 @@
                 ${STATUS_BADGE[t.status]||''}
               </div>
             </div>
-            <p class="section-sub" style="margin:0 0 8px;">${t.ticketPrice===0?'🎁 免费参赛':'门票 '+t.ticketPrice+' 俱乐部积分'} · 已报名 ${t.registeredCount} 人</p>
+            <p class="section-sub" style="margin:0 0 8px;">${t.ticketPrice===0?'🎁 免费参赛':'门票 '+t.ticketPrice+' 积分'} · 已报名 ${t.registeredCount} 人${t.scheduledStart&&t.status==='registering'?' · ⏰ '+new Date(t.scheduledStart).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' 开赛':''}</p>
             <p class="section-sub" style="margin:0 0 10px;">🥇 ${esc(t.prizes[1])}　🥈 ${esc(t.prizes[2])}　🥉 ${esc(t.prizes[3])}</p>
             ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-reg="${t.id}">${t.ticketPrice===0?'免费报名':'花 '+t.ticketPrice+' 积分报名'}</button>` : ''}
             ${t.status==='finished' && t.results ? `<div class="hint-box">${[1,2,3].map(r=>t.results[r]?(r===1?'🥇':r===2?'🥈':'🥉')+esc(t.results[r].username):'').filter(Boolean).join('　')}</div>` : ''}
@@ -510,12 +526,10 @@
               <div class="avatar-grid">${avatarGrid}</div>
             </div>
             <div class="card">
-              <h2 class="section-title" style="font-size:20px;">我的余额</h2>
-              <div class="stat-row-2">
-                <div><div class="big-num">${p.points}</div><div class="section-sub" style="margin:0;">筹码积分</div></div>
-                <div><div class="big-num">${p.clubPoints}</div><div class="section-sub" style="margin:0;">俱乐部积分</div></div>
-              </div>
-              <p class="hint-box" style="margin-top:12px;">这里只显示余额，没有充值/提现功能——筹码积分靠打现金桌赢得，俱乐部积分靠管理员发放或兑换码获得。</p>
+              <h2 class="section-title" style="font-size:20px;">我的积分</h2>
+              <div class="big-num" style="font-size:40px;">${p.clubPoints}</div>
+              <p class="section-sub" style="margin-top:4px;">现金桌坐下、锦标赛买门票、商城兑换礼品，都用这一份积分。</p>
+              <p class="hint-box" style="margin-top:12px;">这里只显示余额，没有充值/提现功能——积分靠管理员发放、充值套餐（线下转账后管理员发放）、兑换码，或者打现金桌赢得。</p>
             </div>
             <div class="card">
               <h2 class="section-title" style="font-size:20px;">交易记录</h2>
@@ -723,7 +737,7 @@
           <div class="seat-avatar avatar-c2" style="width:46px;height:46px;font-size:20px;flex:none;">${esc((account.username||'?').charAt(0).toUpperCase())}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-family:var(--font-display);font-size:19px;color:var(--cream);">${esc(account.username)}</div>
-            <div class="section-sub" style="margin:0;">筹码 <strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分 <strong style="color:var(--gold-bright);">${accountClubPoints}</strong></div>
+            <div class="section-sub" style="margin:0;">积分 <strong style="color:var(--gold-bright);">${accountClubPoints}</strong>　<span style="font-size:11px;">现金桌坐下、买门票、兑换商城都用这个</span></div>
           </div>
           <button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button>
         </div>` : `
@@ -846,7 +860,7 @@
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
-        <div class="seat-avatar avatar-c${orig%9}">${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
           <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="seat-allin-tag" style="background:var(--muted);color:var(--ink);">托管中</span>':''}</div>
@@ -856,10 +870,15 @@
     }).join('');
 
     const tableHtml = `
-      <div class="table-strip"><span>${st.gameType==='omaha'?'🂡 Omaha':"🂡 Hold'em"}　${getStrSetting('lang','zh')==='en' ? 'Hand #'+st.handNumber+' · '+stageLabel(st.stage) : '第 '+st.handNumber+' 局 · '+stageLabel(st.stage)}</span><span>${potlineExtra.replace('　','')}</span></div>
+      <div class="table-topbar">
+        <div class="balance-pill"><span class="coin"></span>${accountClubPoints!==null?accountClubPoints:me?me.chips:'-'}</div>
+        <span class="chip-badge teal">${st.gameType==='omaha'?'Omaha':"Hold'em"}</span>
+      </div>
+      <div class="table-strip"><span>${getStrSetting('lang','zh')==='en' ? 'Hand #'+st.handNumber+' · '+stageLabel(st.stage) : '第 '+st.handNumber+' 局 · '+stageLabel(st.stage)}</span><span>${potlineExtra.replace('　','')}</span></div>
       <div class="poker-table-wrap">
         <div class="poker-table-rail">
           <div class="poker-table-felt">
+            <div class="table-watermark">POKERGO</div>
             <div class="table-center">
               <div class="table-pot"><span class="chip-ico"></span>${t('pot')} ${st.pot}${st.currentBet?'　'+t('current_bet')+' '+st.currentBet:''}</div>
               <div class="table-community">${communityCards}</div>
