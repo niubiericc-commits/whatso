@@ -227,6 +227,26 @@ app.get('/api/tournaments', (req, res) => {
   res.json({ tournaments: tm.listTournaments() });
 });
 
+// 公开的现金桌列表：只列出房主勾选了"公开"的桌子，且不属于任何锦标赛
+app.get('/api/tables', (req, res) => {
+  const list = [];
+  rooms.forEach(r => {
+    if (r.tournamentId) return; // 锦标赛桌不在大厅公开列表里，走报名流程
+    if (!r.isPublic) return;
+    list.push({
+      id: r.id,
+      name: r.name,
+      smallBlind: r.smallBlind,
+      bigBlind: r.bigBlind,
+      startingChips: r.startingChips,
+      playerCount: r.players.length,
+      maxPlayers: r.maxPlayers || 9,
+      stage: r.stage
+    });
+  });
+  res.json({ tables: list });
+});
+
 app.get('/api/promotion', ah(async (req, res) => {
   res.json(await accounts.getPromotion());
 }));
@@ -430,6 +450,8 @@ async function handleMessage(ws, msg) {
         bigBlind: Math.max(2, parseInt(msg.bigBlind, 10) || 10),
         startingChips: Math.max(20, parseInt(msg.startingChips, 10) || 1000),
         turnTimeLimit: Math.max(0, parseInt(msg.turnTimeLimit, 10) || 0),
+        isPublic: !!msg.isPublic,
+        maxPlayers: Math.min(9, Math.max(2, parseInt(msg.maxPlayers, 10) || 9)),
         players: [],
         stage: 'lobby',
         community: [],
