@@ -287,12 +287,12 @@ function handleTournamentTable(room) {
 
 // 摊牌结算后，把有账号的玩家当前筹码同步写回账号积分（每一局只同步一次）
 function syncPointsOnShowdown(room) {
-  if (room.tournamentId) return; // 锦标赛桌的筹码是比赛用的，不同步覆盖现金桌积分
+  if (room.tournamentId) return; // 锦标赛桌的筹码是比赛用的，不同步覆盖账户积分
   if (room.stage !== 'showdown') return;
   if (room._pointsSyncedHand === room.handNumber) return;
   room._pointsSyncedHand = room.handNumber;
   room.players.forEach(p => {
-    if (p.accountUsername) accounts.updatePoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+    if (p.accountUsername) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
   });
 }
 
@@ -483,10 +483,10 @@ async function handleMessage(ws, msg) {
       if (msg.accountToken) {
         const acc = await accounts.authToken(msg.accountToken);
         if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录后再加入' }); return; }
-        if (acc.points <= 0) { send(ws, { type: 'error', message: '账号积分为 0，无法入座，请联系房主' }); return; }
+        if (acc.clubPoints <= 0) { send(ws, { type: 'error', message: '积分为 0，无法入座，请先获取积分（充值套餐/优惠券/管理员发放）' }); return; }
         if (room.players.some(p => p.accountUsername === acc.username)) { send(ws, { type: 'error', message: '该账号已经在本房间中' }); return; }
         accountUsername = acc.username;
-        startChips = acc.points;
+        startChips = acc.clubPoints;
       }
 
       const name = accountUsername || (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
@@ -571,7 +571,7 @@ function handleDisconnect(ws) {
     const p = room.players.find(x => x.id === ws.playerId);
     if (p) {
       p.connected = false; p.ws = null;
-      if (p.accountUsername) accounts.updatePoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+      if (p.accountUsername && !room.tournamentId) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
       const idx = room.players.indexOf(p);
       if (room.turn === idx) room._scheduledTurn = null; // 强制重新排计时器，走托管快速通道
     }
@@ -596,6 +596,12 @@ setInterval(() => {
     }
   }
 }, 30000);
+
+// 每 15 秒检查一次有没有到了预定开始时间该自动开赛的锦标赛
+setInterval(() => {
+  try { tm.checkScheduledStarts({ createRoomForTable }); }
+  catch (e) { console.error('检查预定开赛时间出错:', e); }
+}, 15000);
 
 const PORT = process.env.PORT || 3000;
 accounts.load().then(() => {
