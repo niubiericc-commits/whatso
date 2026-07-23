@@ -171,4 +171,3 @@ module.exports = {
   adjustClubPoints, setClubPoints, getAccountInfo,
   adminLogin, isAdminToken
 };
-module.exports = { load, register, login, authToken, updatePoints };
