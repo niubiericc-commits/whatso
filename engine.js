@@ -199,6 +199,7 @@ function serializeForViewer(room, viewerId) {
     turnDeadline: room.turnDeadline || null,
     nextHandDeadline: room.nextHandDeadline || null,
     gameType: room.gameType || 'holdem',
+    minBuyIn: room.minBuyIn || Math.round(room.startingChips * 0.2),
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
@@ -212,6 +213,7 @@ function serializeForViewer(room, viewerId) {
         betThisStreet: p.betThisStreet,
         connected: !!p.connected,
         hasAccount: !!p.accountUsername,
+        needsRebuy: !!p.needsRebuy,
         seated,
         hasCards: !!(p.cards && p.cards.length),
         cards: revealCards ? (p.cards || []) : [],
