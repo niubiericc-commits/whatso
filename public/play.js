@@ -179,6 +179,14 @@
         localStorage.setItem(storageKey(roomId), JSON.stringify({playerId, playerToken}));
         localStorage.setItem('poker_last_room', roomId);
         render();
+      } else if(msg.type === 'left_table'){
+        if(roomId) localStorage.removeItem(storageKey(roomId));
+        localStorage.removeItem('poker_last_room');
+        roomId = null; playerId = null; playerToken = null; lastState = null;
+        viewMode = 'join';
+        showToast('已离开牌桌');
+        publicTablesLoaded = false;
+        render();
       } else if(msg.type === 'state'){
         lastState = msg; lastError = null; render();
       } else if(msg.type === 'account'){
@@ -897,7 +905,10 @@
     const tableHtml = `
       <div class="table-topbar">
         <div class="balance-pill"><span class="coin"></span>${accountClubPoints!==null?accountClubPoints:me?me.chips:'-'}</div>
-        <span class="chip-badge teal">${st.gameType==='omaha'?'Omaha':"Hold'em"}</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="chip-badge teal">${st.gameType==='omaha'?'Omaha':"Hold'em"}</span>
+          <button class="btn btn-ghost btn-sm auto" id="leaveTableBtn">离开牌桌</button>
+        </div>
       </div>
       <div class="table-strip"><span>${getStrSetting('lang','zh')==='en' ? 'Hand #'+st.handNumber+' · '+stageLabel(st.stage) : '第 '+st.handNumber+' 局 · '+stageLabel(st.stage)}</span><span>${potlineExtra.replace('　','')}</span></div>
       <div class="poker-table-wrap">
@@ -955,6 +966,7 @@
         bottom = `<p class="section-sub" style="margin-top:10px;">${t('waiting_others')}</p>`;
       } else {
         const need = st.currentBet - me.betThisStreet;
+        const minRaiseTo = st.currentBet + (st.minRaise || st.bigBlind);
         const quickRaiseHtml = getSetting('showQuickRaise', true) ? `
           <div class="pot-quick-row">
             <button class="btn btn-ghost btn-sm auto" data-frac="0.25">${t('quarter_pot')}</button>
@@ -965,14 +977,15 @@
         bottom = `
           <div class="action-row">
             <button class="btn btn-danger" id="foldBtn">${t('action_fold')}</button>
-            <button class="btn btn-blue" id="callBtn">${need<=0?t('action_check'):t('action_call')+' '+need}</button>
+            <button class="btn btn-blue" id="callBtn" data-default-label="${need<=0?t('action_check'):t('action_call')+' '+need}">${need<=0?t('action_check'):t('action_call')+' '+need}</button>
             <button class="btn btn-ghost" id="allinBtn">${t('action_allin')} (${me.chips})</button>
           </div>
           ${quickRaiseHtml}
           <div class="raise-box">
-            <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${st.currentBet+1}">
+            <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${minRaiseTo}">
             <button class="btn btn-primary auto" id="raiseBtn">${t('action_raise')}</button>
-          </div>`;
+          </div>
+          <p class="section-sub" style="margin-top:6px;">最低加注到 ${minRaiseTo}</p>`;
       }
       panel = `
         <div class="turn-panel">
@@ -989,18 +1002,48 @@
       ${panel}
     `;
 
+    const leaveTableBtn = document.getElementById('leaveTableBtn');
+    if(leaveTableBtn) leaveTableBtn.onclick = () => {
+      if(confirm('确定要离开这桌吗？如果正在进行一手牌，会先自动帮你弃牌。')) send({type:'leave_table'});
+    };
     const foldBtn = document.getElementById('foldBtn');
     if(foldBtn) foldBtn.onclick = () => { soundAction(); send({type:'action', action:'fold'}); };
     const callBtn = document.getElementById('callBtn');
-    if(callBtn) callBtn.onclick = () => { soundAction(); send({type:'action', action: (st.currentBet - me.betThisStreet)<=0 ? 'check':'call'}); };
+    const raiseInputEl = document.getElementById('raiseInput');
+    const minRaiseToVal = st.currentBet + (st.minRaise || st.bigBlind);
+    const maxRaiseToVal = me ? me.betThisStreet + me.chips : 0;
+    // 输入框里一旦填了有效的加注金额，"跟注/过牌"这个按钮就变成"加注到 X"，
+    // 不用非得去点旁边小小的加注按钮，符合大部分人玩牌时的操作习惯。
+    function syncCallBtnWithRaiseInput(){
+      if(!callBtn || !raiseInputEl) return;
+      const v = parseInt(raiseInputEl.value, 10);
+      if(v && v >= minRaiseToVal){
+        callBtn.textContent = t('action_raise') + ' → ' + Math.min(v, maxRaiseToVal);
+        callBtn.dataset.raiseMode = '1';
+      } else {
+        callBtn.textContent = callBtn.dataset.defaultLabel;
+        callBtn.dataset.raiseMode = '';
+      }
+    }
+    if(raiseInputEl) raiseInputEl.oninput = syncCallBtnWithRaiseInput;
+    if(callBtn) callBtn.onclick = () => {
+      if(callBtn.dataset.raiseMode === '1'){
+        const v = Math.min(parseInt(raiseInputEl.value,10), maxRaiseToVal);
+        soundAction();
+        send({type:'action', action: v>=maxRaiseToVal?'allin':'raise', amount: v});
+        return;
+      }
+      soundAction();
+      send({type:'action', action: (st.currentBet - me.betThisStreet)<=0 ? 'check':'call'});
+    };
     const allinBtn = document.getElementById('allinBtn');
     if(allinBtn) allinBtn.onclick = () => { soundAction(); send({type:'action', action:'allin'}); };
     const raiseBtn = document.getElementById('raiseBtn');
     if(raiseBtn) raiseBtn.onclick = () => {
       const v = parseInt(document.getElementById('raiseInput').value,10);
-      if(!v || v<=st.currentBet){ alert('加注金额需大于当前下注'); return; }
+      if(!v || v < minRaiseToVal){ alert('加注最低要到 ' + minRaiseToVal); return; }
       soundAction();
-      send({type:'action', action:'raise', amount:v});
+      send({type:'action', action: v>=maxRaiseToVal?'allin':'raise', amount: Math.min(v, maxRaiseToVal)});
     };
     document.querySelectorAll('[data-frac]').forEach(b=>{
       b.onclick = () => {
@@ -1008,10 +1051,10 @@
         const need = Math.max(0, st.currentBet - me.betThisStreet);
         const potAfterCall = st.pot + need;
         let target = st.currentBet + Math.round(frac * potAfterCall);
-        target = Math.max(target, st.currentBet + 1);
-        target = Math.min(target, me.betThisStreet + me.chips);
+        target = Math.max(target, minRaiseToVal);
+        target = Math.min(target, maxRaiseToVal);
         const input = document.getElementById('raiseInput');
-        if(input) input.value = target;
+        if(input){ input.value = target; syncCallBtnWithRaiseInput(); }
       };
     });
   }
