@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { dealHand, applyAction, serializeForViewer } = require('./game/engine');
 const accounts = require('./accounts');
+const createTournamentModule = require('./tournament');
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -14,6 +15,36 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 const rooms = new Map(); // roomId -> room
+const tm = createTournamentModule({ rooms, dealHand, accounts });
+
+function removeRoom(id) {
+  const r = rooms.get(id);
+  if (r) { clearTimeout(r.turnTimer); clearTimeout(r.autoNextTimer); }
+  rooms.delete(id);
+}
+
+function createRoomForTable(t, bucket) {
+  const roomId = randomId(6);
+  const room = {
+    id: roomId,
+    name: t.name + ' · 第' + (t.tableIds.length + 1) + '桌',
+    hostToken: null,
+    hostWs: null,
+    smallBlind: t.smallBlind,
+    bigBlind: t.bigBlind,
+    startingChips: t.startingChips,
+    turnTimeLimit: 30, // 锦标赛桌默认给个思考时间上限，避免有人一直不操作卡住整场比赛
+    tournamentId: t.id,
+    players: bucket.map(p => ({
+      id: randomId(8), name: p.username, token: randomToken(), accountUsername: p.username,
+      chips: t.startingChips, cards: [], folded: false, allIn: false, betThisStreet: 0, totalContrib: 0,
+      ws: null, connected: true // 默认按“在线”处理，给玩家赶到座位的时间；真掉线后才会走快速托管
+    })),
+    stage: 'lobby', community: [], pot: 0, currentBet: 0, dealerIdx: null, handNumber: 0
+  };
+  rooms.set(roomId, room);
+  return room;
+}
 
 const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function randomId(len = 6) {
@@ -34,12 +65,32 @@ function broadcastRoom(room) {
   scheduleTurnTimer(room);
   scheduleAutoNextHand(room);
   syncPointsOnShowdown(room);
+  handleTournamentTable(room);
   if (room.hostWs) send(room.hostWs, serializeForViewer(room, '__host__'));
   room.players.forEach(p => { if (p.ws) send(p.ws, serializeForViewer(room, p.id)); });
 }
 
+// 锦标赛桌摊牌后：处理淘汰/并桌，并把受影响的其它桌也重新广播一次
+// （用 _tBroadcastGuard 防止两桌同时摊牌时互相触发导致死循环）
+function handleTournamentTable(room) {
+  if (!room.tournamentId || room.stage !== 'showdown') return;
+  if (room._tBroadcastGuard) return;
+  room._tBroadcastGuard = true;
+  const t = tm.getTournamentByRoom(room);
+  tm.onTableSettled(room, { removeRoom });
+  if (t) {
+    t.tableIds.forEach(rid => {
+      if (rid === room.id) return;
+      const r = rooms.get(rid);
+      if (r) broadcastRoom(r);
+    });
+  }
+  room._tBroadcastGuard = false;
+}
+
 // 摊牌结算后，把有账号的玩家当前筹码同步写回账号积分（每一局只同步一次）
 function syncPointsOnShowdown(room) {
+  if (room.tournamentId) return; // 锦标赛桌的筹码是比赛用的，不同步覆盖现金桌积分
   if (room.stage !== 'showdown') return;
   if (room._pointsSyncedHand === room.handNumber) return;
   room._pointsSyncedHand = room.handNumber;
@@ -139,19 +190,98 @@ async function handleMessage(ws, msg) {
     case 'register': {
       const r = await accounts.register(msg.username, msg.password);
       if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      send(ws, { type: 'account', username: r.username, points: r.points, accountToken: r.accountToken });
+      send(ws, { type: 'account', username: r.username, points: r.points, clubPoints: r.clubPoints, accountToken: r.accountToken });
       break;
     }
     case 'login': {
       const r = await accounts.login(msg.username, msg.password);
       if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      send(ws, { type: 'account', username: r.username, points: r.points, accountToken: r.accountToken });
+      send(ws, { type: 'account', username: r.username, points: r.points, clubPoints: r.clubPoints, accountToken: r.accountToken });
       break;
     }
     case 'account_auth': {
       const acc = await accounts.authToken(msg.accountToken);
       if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录' }); return; }
-      send(ws, { type: 'account', username: acc.username, points: acc.points, accountToken: msg.accountToken });
+      send(ws, { type: 'account', username: acc.username, points: acc.points, clubPoints: acc.clubPoints, accountToken: msg.accountToken });
+      break;
+    }
+
+    // ---------------- 俱乐部管理员 ----------------
+    case 'admin_login': {
+      const r = accounts.adminLogin(msg.password);
+      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      ws.isAdmin = true;
+      send(ws, { type: 'admin_ok', adminToken: r.adminToken });
+      break;
+    }
+    case 'admin_create_tournament': {
+      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
+      const t = tm.createTournament(msg);
+      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
+      break;
+    }
+    case 'admin_start_tournament': {
+      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
+      const t = tm.tournaments.get(msg.tournamentId);
+      if (!t) { send(ws, { type: 'error', message: '赛事不存在' }); return; }
+      const r = tm.startTournament(t, { createRoomForTable });
+      if (r && r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
+      break;
+    }
+    case 'admin_list_tournaments': {
+      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
+      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
+      break;
+    }
+    case 'admin_lookup_account': {
+      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
+      const info = await accounts.getAccountInfo(msg.username);
+      if (!info) { send(ws, { type: 'error', message: '账号不存在' }); return; }
+      send(ws, { type: 'admin_account_info', ...info });
+      break;
+    }
+    case 'admin_adjust_club_points': {
+      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
+      const r = await accounts.adjustClubPoints(msg.username, parseInt(msg.delta, 10) || 0);
+      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      send(ws, { type: 'admin_account_info', username: msg.username, clubPoints: r.clubPoints });
+      break;
+    }
+
+    // ---------------- 玩家侧：锦标赛报名 ----------------
+    case 'tournament_list': {
+      send(ws, { type: 'tournament_list', tournaments: tm.listTournaments() });
+      break;
+    }
+    case 'tournament_register': {
+      const r = await tm.register(msg.tournamentId, msg.accountToken);
+      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      send(ws, { type: 'tournament_registered', tournamentId: msg.tournamentId, clubPoints: r.clubPoints });
+      break;
+    }
+    case 'tournament_check_assignment': {
+      const t = tm.tournaments.get(msg.tournamentId);
+      if (!t) { send(ws, { type: 'error', message: '赛事不存在' }); return; }
+      const acc = await accounts.authToken(msg.accountToken);
+      if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录' }); return; }
+      if (t.status === 'finished') {
+        send(ws, { type: 'tournament_finished', tournamentId: t.id, results: t.results });
+        return;
+      }
+      if (t.status === 'registering') {
+        send(ws, { type: 'tournament_waiting', tournamentId: t.id });
+        return;
+      }
+      const assignment = tm.findAssignment(t, acc.username);
+      if (!assignment) {
+        // 已开赛但没找到这个人（可能没报上名，或者已经在这场比赛里被淘汰出局）
+        const eliminated = t.eliminationOrder.find(e => e.username === acc.username);
+        if (eliminated) { send(ws, { type: 'tournament_eliminated', tournamentId: t.id, rank: eliminated.rank }); return; }
+        send(ws, { type: 'error', message: '未找到你在本场赛事中的座位' });
+        return;
+      }
+      send(ws, { type: 'tournament_assigned', tournamentId: t.id, roomId: assignment.roomId, playerToken: assignment.playerToken });
       break;
     }
     case 'host_create': {
@@ -214,10 +344,17 @@ async function handleMessage(ws, msg) {
       break;
     }
     case 'rejoin': {
-      const room = rooms.get((msg.roomId || '').toUpperCase());
-      if (!room) { send(ws, { type: 'error', message: '房间不存在' }); return; }
-      const player = room.players.find(p => p.token === msg.playerToken);
-      if (!player) { send(ws, { type: 'error', message: '身份校验失败，请重新加入' }); return; }
+      let room = rooms.get((msg.roomId || '').toUpperCase());
+      let player = room && room.players.find(p => p.token === msg.playerToken);
+      if (!player) {
+        // 记忆里的房间号可能已经失效（比如断线期间被锦标赛并桌挪到了别的桌子），
+        // 全局搜一遍所有房间，找到这个 token 真正所在的桌子
+        for (const r of rooms.values()) {
+          const p = r.players.find(x => x.token === msg.playerToken);
+          if (p) { room = r; player = p; break; }
+        }
+      }
+      if (!room || !player) { send(ws, { type: 'error', message: '身份校验失败，请重新加入' }); return; }
       player.ws = ws; player.connected = true;
       ws.roomId = room.id; ws.playerId = player.id;
       if (room.turn === room.players.indexOf(player)) room._scheduledTurn = null; // 重连恢复正常思考时间，不再走托管快速通道
