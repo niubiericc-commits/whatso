@@ -37,27 +37,37 @@
   function connect(onOpen){
     connSeq++;
     const myConn = connSeq;
+    console.log('[pokergo] connect() 开始，连接序号', myConn);
     clearTimeout(reconnectTimer);
     if(ws){ try{ ws.onclose=null; ws.close(); }catch(e){} }
     connStatus = 'connecting'; render();
     let socket;
     try{
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      socket = new WebSocket(proto + '://' + location.host + '/ws');
+      const url = proto + '://' + location.host + '/ws';
+      console.log('[pokergo] 正在创建 WebSocket，地址：', url);
+      socket = new WebSocket(url);
     }catch(e){
+      console.log('[pokergo] 创建 WebSocket 直接抛出异常：', e);
       lastError = '无法创建连接：' + e.message;
       connStatus = 'closed'; render();
       return;
     }
     ws = socket;
-    socket.onopen = () => { if(myConn!==connSeq) return; connStatus='open'; if(onOpen) onOpen(); };
+    socket.onopen = () => {
+      console.log('[pokergo] WebSocket onopen 触发，连接序号', myConn, '当前连接序号', connSeq);
+      if(myConn!==connSeq) return;
+      connStatus='open'; if(onOpen) onOpen();
+    };
     socket.onmessage = (ev) => {
+      console.log('[pokergo] 收到消息：', ev.data);
       if(myConn!==connSeq) return;
       let msg;
-      try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+      try{ msg = JSON.parse(ev.data); }catch(e){ console.log('[pokergo] 消息解析失败', e); return; }
       handleMessage(msg);
     };
-    socket.onclose = () => {
+    socket.onclose = (ev) => {
+      console.log('[pokergo] WebSocket onclose 触发，code=', ev.code, 'reason=', ev.reason, 'wasClean=', ev.wasClean);
       if(myConn!==connSeq) return;
       connStatus = 'closed';
       if(!lastError) lastError = '与服务器的连接断开了（可能是网络问题，或服务器暂时无法访问，免费版服务器休眠唤醒有时会断一次再重连）。';
@@ -67,7 +77,8 @@
       }, 2000);
       render();
     };
-    socket.onerror = () => {
+    socket.onerror = (ev) => {
+      console.log('[pokergo] WebSocket onerror 触发：', ev);
       if(myConn!==connSeq) return;
       lastError = lastError || '连接出错（网络问题，或服务器暂时没有响应，免费版服务器休眠后首次访问可能要等 30 秒左右）';
       render();
@@ -84,17 +95,29 @@
       lastError = null; render();
     } else if(msg.type === 'state'){
       lastState = msg; lastError = null; clearTimeout(connectTimeoutTimer); render();
-    } else if(msg.type === 'admin_ok'){
-      adminToken = msg.adminToken;
-      localStorage.setItem('pokergo_admin_token', adminToken);
-      lastError = null; refreshTournaments(); render();
-    } else if(msg.type === 'admin_tournaments'){
-      tournaments = msg.tournaments; lastError = null; render();
-    } else if(msg.type === 'admin_account_info'){
-      lookupResult = msg; lastError = null; render();
     } else if(msg.type === 'error'){
       lastError = msg.message; render();
     }
+  }
+
+  // ---------------- 俱乐部后台用普通 HTTP 请求，不走 WebSocket ----------------
+  async function apiGet(path){
+    const res = await fetch(path, { headers: adminToken ? {'X-Admin-Token': adminToken} : {} });
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+    if(!res.ok) throw new Error(data.error || ('请求失败（状态码 ' + res.status + '）'));
+    return data;
+  }
+  async function apiPost(path, body){
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, adminToken?{'X-Admin-Token':adminToken}:{}),
+      body: JSON.stringify(body||{})
+    });
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+    if(!res.ok) throw new Error(data.error || ('请求失败（状态码 ' + res.status + '）'));
+    return data;
   }
 
   // ==================== 菜单 ====================
@@ -307,7 +330,14 @@
   }
 
   // ==================== 俱乐部后台 ====================
-  function refreshTournaments(){ send({type:'admin_list_tournaments', adminToken}); }
+  let clubBusy = false;
+  async function refreshTournaments(){
+    try{
+      const r = await apiGet('/api/admin/tournaments');
+      tournaments = r.tournaments; lastError = null;
+    }catch(e){ lastError = e.message; }
+    render();
+  }
   function logoutClub(){
     adminToken = null;
     localStorage.removeItem('pokergo_admin_token');
@@ -317,32 +347,18 @@
 
   function renderClub(){
     if(!adminToken){
-      const connHint = connStatus==='connecting'
-        ? `<p class="section-sub">正在连接服务器…</p>
-           <p class="section-sub" id="clubTimeoutHint" style="display:none;">一直连不上？免费版服务器休眠唤醒可能要等 30 秒左右；如果等了很久还不行，点下面按钮重试。</p>
-           <div class="btn-row" id="clubTimeoutBtnRow" style="display:none;"><button class="btn btn-ghost" id="clubRetryBtn">重新尝试连接</button></div>`
-        : (lastError ? `<div class="btn-row"><button class="btn btn-ghost" id="clubRetryBtn">重新尝试连接</button></div>` : '');
-      setTimeout(()=>{
-        if(connStatus==='connecting'){
-          const hint = document.getElementById('clubTimeoutHint');
-          const row = document.getElementById('clubTimeoutBtnRow');
-          if(hint) hint.style.display='block';
-          if(row) row.style.display='flex';
-        }
-      }, 8000);
       return `
         <div class="card">
           <h2 class="section-title">管理员登录</h2>
           <p class="section-sub">用管理员密码登录后台，用来建赛事、调整俱乐部积分。</p>
           ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
-          ${connHint}
+          ${clubBusy?'<p class="section-sub">正在登录…</p>':''}
           <div class="field"><label>管理员密码</label><input type="password" id="adminPass"></div>
-          <div class="btn-row"><button class="btn btn-primary" id="adminLoginBtn">登录</button></div>
+          <div class="btn-row"><button class="btn btn-primary" id="adminLoginBtn" ${clubBusy?'disabled':''}>登录</button></div>
         </div>`;
     }
 
     if(!clubListTimer) clubListTimer = setInterval(refreshTournaments, 4000);
-    if(!ws || ws.readyState!==1){ if(connStatus!=='connecting') connect(refreshTournaments); }
 
     const tourneyRows = tournaments.map(t => `
       <div class="card">
@@ -410,51 +426,69 @@
 
   function bindClubEvents(){
     const adminLoginBtn = document.getElementById('adminLoginBtn');
-    if(adminLoginBtn) adminLoginBtn.onclick = () => {
+    if(adminLoginBtn) adminLoginBtn.onclick = async () => {
       const pass = document.getElementById('adminPass').value;
       if(!pass){ alert('请输入密码'); return; }
-      lastError = null;
-      connect(()=> send({type:'admin_login', password: pass}));
-    };
-    const clubRetryBtn = document.getElementById('clubRetryBtn');
-    if(clubRetryBtn) clubRetryBtn.onclick = () => {
-      const pass = document.getElementById('adminPass') ? document.getElementById('adminPass').value : '';
-      lastError = null;
-      connect(()=> { if(pass) send({type:'admin_login', password: pass}); });
+      lastError = null; clubBusy = true; render();
+      try{
+        const r = await apiPost('/api/admin/login', { password: pass });
+        adminToken = r.adminToken;
+        localStorage.setItem('pokergo_admin_token', adminToken);
+        clubBusy = false;
+        await refreshTournaments();
+      }catch(e){
+        lastError = e.message; clubBusy = false; render();
+      }
     };
     const logoutClubBtn = document.getElementById('logoutClubBtn');
     if(logoutClubBtn) logoutClubBtn.onclick = logoutClub;
     const lookupBtn = document.getElementById('lookupBtn');
-    if(lookupBtn) lookupBtn.onclick = () => {
+    if(lookupBtn) lookupBtn.onclick = async () => {
       const u = document.getElementById('lookupUser').value.trim();
       if(!u){ alert('请输入用户名'); return; }
-      send({type:'admin_lookup_account', adminToken, username: u});
+      try{
+        lookupResult = await apiGet('/api/admin/accounts/' + encodeURIComponent(u));
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
     };
     const adjustBtn = document.getElementById('adjustBtn');
-    if(adjustBtn) adjustBtn.onclick = () => {
+    if(adjustBtn) adjustBtn.onclick = async () => {
       const delta = parseInt(document.getElementById('adjustDelta').value, 10);
       if(!delta){ alert('请输入调整数值'); return; }
-      send({type:'admin_adjust_club_points', adminToken, username: lookupResult.username, delta});
+      try{
+        const r = await apiPost('/api/admin/accounts/' + encodeURIComponent(lookupResult.username) + '/club-points', { delta });
+        lookupResult = Object.assign({}, lookupResult, { clubPoints: r.clubPoints });
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
     };
     const createTBtn = document.getElementById('createTBtn');
-    if(createTBtn) createTBtn.onclick = () => {
-      send({
-        type:'admin_create_tournament', adminToken,
-        name: document.getElementById('tName').value.trim(),
-        ticketPrice: parseInt(document.getElementById('tTicket').value,10)||0,
-        maxTableSize: parseInt(document.getElementById('tMaxTable').value,10)||9,
-        startingChips: parseInt(document.getElementById('tChips').value,10)||1000,
-        smallBlind: parseInt(document.getElementById('tSb').value,10)||5,
-        bigBlind: parseInt(document.getElementById('tBb').value,10)||10,
-        prize1: document.getElementById('tPrize1').value.trim(),
-        prize2: document.getElementById('tPrize2').value.trim(),
-        prize3: document.getElementById('tPrize3').value.trim()
-      });
+    if(createTBtn) createTBtn.onclick = async () => {
+      try{
+        const r = await apiPost('/api/admin/tournaments', {
+          name: document.getElementById('tName').value.trim(),
+          ticketPrice: parseInt(document.getElementById('tTicket').value,10)||0,
+          maxTableSize: parseInt(document.getElementById('tMaxTable').value,10)||9,
+          startingChips: parseInt(document.getElementById('tChips').value,10)||1000,
+          smallBlind: parseInt(document.getElementById('tSb').value,10)||5,
+          bigBlind: parseInt(document.getElementById('tBb').value,10)||10,
+          prize1: document.getElementById('tPrize1').value.trim(),
+          prize2: document.getElementById('tPrize2').value.trim(),
+          prize3: document.getElementById('tPrize3').value.trim()
+        });
+        tournaments = r.tournaments; lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
     };
     document.querySelectorAll('[data-start]').forEach(b=>{
-      b.onclick = () => {
+      b.onclick = async () => {
         if(!confirm('确认开赛吗？开赛后不能再接受新报名。')) return;
-        send({type:'admin_start_tournament', adminToken, tournamentId: b.dataset.start});
+        try{
+          const r = await apiPost('/api/admin/tournaments/' + encodeURIComponent(b.dataset.start) + '/start', {});
+          tournaments = r.tournaments; lastError = null;
+        }catch(e){ lastError = e.message; }
+        render();
       };
     });
   }
@@ -479,7 +513,7 @@
     const goHostBtn = document.getElementById('goHostBtn');
     if(goHostBtn) goHostBtn.onclick = () => { pageMode='host'; lastError=null; render(); if(roomId && hostToken) connect(()=> send({type:'host_auth', roomId, hostToken})); };
     const goClubBtn = document.getElementById('goClubBtn');
-    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken) connect(refreshTournaments); };
+    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken) refreshTournaments(); };
 
     if(pageMode==='host') bindHostEvents();
     if(pageMode==='club') bindClubEvents();
