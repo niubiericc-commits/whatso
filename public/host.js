@@ -24,6 +24,17 @@
   let lookupResult = null;
   let clubListTimer = null;
   let promotionAdmin = { announcement:{title:'',body:''}, packages:[], tiers:{VIP:'',SVIP:''} };
+  // 通用草稿存储：后台页面每 4 秒自动刷新赛事列表会重画整个页面，
+  // 任何输入框正在打的字都要用这个记下来，重画时填回去，不会被冲掉。
+  let formDrafts = {};
+  function dv(id, def){ return formDrafts[id] !== undefined ? formDrafts[id] : def; }
+  function bindDrafts(ids){
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.oninput = () => { formDrafts[id] = el.value; };
+    });
+  }
   let levelsAdmin = [];
   let shopAdmin = [];
 
@@ -418,13 +429,13 @@
       <div class="card">
         <h2 class="section-title">查找账号 / 调整俱乐部积分</h2>
         <p class="section-sub">俱乐部积分只用于购买锦标赛门票，跟桌上打牌用的筹码积分是两套独立的数字。</p>
-        <div class="field"><label>用户名</label><input type="text" id="lookupUser"></div>
+        <div class="field"><label>用户名</label><input type="text" id="lookupUser" value="${esc(dv('lookupUser',''))}"></div>
         <div class="btn-row"><button class="btn btn-ghost auto" id="lookupBtn">查询</button></div>
         ${lookupResult ? `
         <div class="hint-box" style="margin-top:12px;">
           账号：${esc(lookupResult.username)}　筹码积分：${lookupResult.points!==undefined?lookupResult.points:'-'}　俱乐部积分：<strong style="color:var(--gold-bright);">${lookupResult.clubPoints}</strong>　会员等级：<strong style="color:var(--gold-bright);">${lookupResult.tier&&lookupResult.tier!=='none'?lookupResult.tier:'普通用户'}</strong>　成长值：<strong style="color:var(--gold-bright);">${lookupResult.growth||0}</strong>（Lv.${lookupResult.level||0}）
         </div>
-        <div class="field" style="margin-top:10px;"><label>调整俱乐部积分（正数增加，负数扣减）</label><input type="number" id="adjustDelta" value="100"></div>
+        <div class="field" style="margin-top:10px;"><label>调整俱乐部积分（正数增加，负数扣减）</label><input type="number" id="adjustDelta" value="${esc(dv('adjustDelta','100'))}"></div>
         <div class="btn-row"><button class="btn btn-primary auto" id="adjustBtn">应用调整</button></div>
         <div class="field" style="margin-top:14px;"><label>设置会员等级</label>
           <select id="tierSelect">
@@ -479,8 +490,8 @@
         <p class="section-sub">这些内容会显示在玩家端"个人中心 → Promotion"页面。充值/升级都需要玩家线下转账后，你在上面"查找账号"里手动给他加积分/改等级。</p>
 
         <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:0 0 8px;">公告</h3>
-        <div class="field"><label>标题</label><input type="text" id="promoTitle" value="${esc((promotionAdmin.announcement&&promotionAdmin.announcement.title)||'')}"></div>
-        <div class="field"><label>正文</label><textarea id="promoBody" style="min-height:80px;">${esc((promotionAdmin.announcement&&promotionAdmin.announcement.body)||'')}</textarea></div>
+        <div class="field"><label>标题</label><input type="text" id="promoTitle" value="${esc(dv('promoTitle', (promotionAdmin.announcement&&promotionAdmin.announcement.title)||''))}"></div>
+        <div class="field"><label>正文</label><textarea id="promoBody" style="min-height:80px;">${esc(dv('promoBody', (promotionAdmin.announcement&&promotionAdmin.announcement.body)||''))}</textarea></div>
         <div class="btn-row"><button class="btn btn-ghost auto" id="savePromoBtn">保存公告</button></div>
 
         <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:20px 0 8px;">充值套餐</h3>
@@ -488,46 +499,46 @@
           <div class="showdown-row"><span>¥${p.amountRMB} → ${p.tickets}张门票${p.clubPoints?' +'+p.clubPoints+'积分':''}（${esc(p.note||'')}）</span>
           <button class="btn btn-danger btn-sm auto" data-delpkg="${p.id}">删除</button></div>`).join('') || '<p class="section-sub">还没有套餐</p>'}
         <div class="field" style="display:flex;gap:8px;margin-top:12px;">
-          <input type="number" id="pkgAmount" placeholder="¥金额" style="flex:1;">
-          <input type="number" id="pkgTickets" placeholder="门票张数" style="flex:1;">
-          <input type="number" id="pkgClubPoints" placeholder="额外积分" style="flex:1;">
+          <input type="number" id="pkgAmount" value="${esc(dv('pkgAmount',''))}" placeholder="¥金额" style="flex:1;">
+          <input type="number" id="pkgTickets" value="${esc(dv('pkgTickets',''))}" placeholder="门票张数" style="flex:1;">
+          <input type="number" id="pkgClubPoints" value="${esc(dv('pkgClubPoints',''))}" placeholder="额外积分" style="flex:1;">
         </div>
-        <div class="field"><input type="text" id="pkgNote" placeholder="套餐说明，例如：首充特惠"></div>
+        <div class="field"><input type="text" id="pkgNote" value="${esc(dv('pkgNote',''))}" placeholder="套餐说明，例如：首充特惠"></div>
         <div class="btn-row"><button class="btn btn-ghost auto" id="addPkgBtn">添加套餐</button></div>
 
         <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:20px 0 8px;">会员等级说明</h3>
-        <div class="field"><label>VIP 权益说明</label><textarea id="tierVipText" style="min-height:60px;">${esc((promotionAdmin.tiers&&promotionAdmin.tiers.VIP)||'')}</textarea></div>
+        <div class="field"><label>VIP 权益说明</label><textarea id="tierVipText" style="min-height:60px;">${esc(dv('tierVipText', (promotionAdmin.tiers&&promotionAdmin.tiers.VIP)||''))}</textarea></div>
         <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="saveTierVipBtn">保存 VIP 说明</button></div>
-        <div class="field" style="margin-top:12px;"><label>SVIP 权益说明</label><textarea id="tierSvipText" style="min-height:60px;">${esc((promotionAdmin.tiers&&promotionAdmin.tiers.SVIP)||'')}</textarea></div>
+        <div class="field" style="margin-top:12px;"><label>SVIP 权益说明</label><textarea id="tierSvipText" style="min-height:60px;">${esc(dv('tierSvipText', (promotionAdmin.tiers&&promotionAdmin.tiers.SVIP)||''))}</textarea></div>
         <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="saveTierSvipBtn">保存 SVIP 说明</button></div>
       </div>
 
       <div class="card">
         <h2 class="section-title">创建定制赛事</h2>
         <p class="section-sub">门票用俱乐部积分购买；奖品是文字说明，实际奖品由你线下发放，系统只负责记录和排名。门票设为 0 就是免费赛事，会单独归到玩家端"免费比赛"分类里。</p>
-        <div class="field"><label>赛事名称</label><input type="text" id="tName" value="定制锦标赛"></div>
+        <div class="field"><label>赛事名称</label><input type="text" id="tName" value="${esc(dv('tName','定制锦标赛'))}"></div>
         <div class="field"><label>游戏类型</label>
           <select id="tGameType">
-            <option value="holdem">德州扑克 Hold'em</option>
-            <option value="omaha">奥马哈 Omaha</option>
+            <option value="holdem" ${dv('tGameType','holdem')==='holdem'?'selected':''}>德州扑克 Hold'em</option>
+            <option value="omaha" ${dv('tGameType','holdem')==='omaha'?'selected':''}>奥马哈 Omaha</option>
           </select>
         </div>
         <div class="field" style="display:flex;gap:12px;">
-          <div style="flex:1"><label>门票价格（俱乐部积分，0=免费）</label><input type="number" id="tTicket" value="100" min="0"></div>
-          <div style="flex:1"><label>每桌最多人数</label><input type="number" id="tMaxTable" value="9" min="2" max="9"></div>
+          <div style="flex:1"><label>门票价格（俱乐部积分，0=免费）</label><input type="number" id="tTicket" value="${esc(dv('tTicket','100'))}" min="0"></div>
+          <div style="flex:1"><label>每桌最多人数</label><input type="number" id="tMaxTable" value="${esc(dv('tMaxTable','9'))}" min="2" max="9"></div>
         </div>
         <div class="field" style="display:flex;gap:12px;">
-          <div style="flex:1"><label>起始筹码</label><input type="number" id="tChips" value="1000" min="20"></div>
+          <div style="flex:1"><label>起始筹码</label><input type="number" id="tChips" value="${esc(dv('tChips','1000'))}" min="20"></div>
           <div style="flex:1"><label>小盲/大盲</label>
             <div style="display:flex;gap:6px;">
-              <input type="number" id="tSb" value="5" min="1">
-              <input type="number" id="tBb" value="10" min="2">
+              <input type="number" id="tSb" value="${esc(dv('tSb','5'))}" min="1">
+              <input type="number" id="tBb" value="${esc(dv('tBb','10'))}" min="2">
             </div>
           </div>
         </div>
-        <div class="field"><label>🥇 冠军奖品</label><input type="text" id="tPrize1" placeholder="例如：平板电脑"></div>
-        <div class="field"><label>🥈 亚军奖品</label><input type="text" id="tPrize2" placeholder="例如：机械键盘"></div>
-        <div class="field"><label>🥉 季军奖品</label><input type="text" id="tPrize3" placeholder="例如：扑克筹码套装"></div>
+        <div class="field"><label>🥇 冠军奖品</label><input type="text" id="tPrize1" value="${esc(dv('tPrize1',''))}" placeholder="例如：平板电脑"></div>
+        <div class="field"><label>🥈 亚军奖品</label><input type="text" id="tPrize2" value="${esc(dv('tPrize2',''))}" placeholder="例如：机械键盘"></div>
+        <div class="field"><label>🥉 季军奖品</label><input type="text" id="tPrize3" value="${esc(dv('tPrize3',''))}" placeholder="例如：扑克筹码套装"></div>
         <div class="btn-row"><button class="btn btn-primary" id="createTBtn">创建赛事</button></div>
       </div>
 
@@ -699,9 +710,16 @@
           prize3: document.getElementById('tPrize3').value.trim()
         });
         tournaments = r.tournaments; lastError = null;
+        ['tName','tGameType','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3'].forEach(id=>delete formDrafts[id]);
       }catch(e){ lastError = e.message; }
       render();
     };
+    // 输入框内容实时记进草稿，不触发重画——这样后台每 4 秒自动刷新赛事列表时，
+    // 重新画出来的表单会用草稿里的最新值填充，不会把正在打的字冲掉。
+    bindDrafts(['tName','tTicket','tMaxTable','tChips','tSb','tBb','tPrize1','tPrize2','tPrize3',
+      'lookupUser','adjustDelta','promoTitle','promoBody','pkgAmount','pkgTickets','pkgClubPoints','pkgNote','tierVipText','tierSvipText']);
+    const tGameTypeEl = document.getElementById('tGameType');
+    if(tGameTypeEl) tGameTypeEl.onchange = () => { formDrafts.tGameType = tGameTypeEl.value; };
     document.querySelectorAll('[data-start]').forEach(b=>{
       b.onclick = async () => {
         if(!confirm('确认开赛吗？开赛后不能再接受新报名。')) return;
