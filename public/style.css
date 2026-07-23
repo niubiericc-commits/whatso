@@ -263,7 +263,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .poker-table-rail{position:absolute;inset:3%;border-radius:50%;
   background:linear-gradient(160deg,#3a2412,#1a0f06 60%,#0a0603);
   box-shadow:0 26px 60px -18px rgba(0,0,0,.8), inset 0 0 0 2px rgba(226,171,63,0.25);}
-.poker-table-felt{position:absolute;inset:8.5%;border-radius:50%;
+.poker-table-felt{position:absolute;inset:11.5%;border-radius:50%;
   background:radial-gradient(ellipse at 50% 32%, var(--felt-light) 0%, var(--felt) 32%, var(--felt-dark) 62%, #061410 100%);
   border:3px solid var(--gold);
   box-shadow:inset 0 0 60px rgba(0,0,0,.5), inset 0 0 0 6px rgba(0,0,0,.15), 0 0 0 1px rgba(255,216,115,0.3);
