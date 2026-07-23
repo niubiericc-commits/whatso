@@ -19,6 +19,7 @@ module.exports = function createTournamentModule(deps) {
     const t = {
       id,
       name: (opts.name || '定制锦标赛').slice(0, 40),
+      gameType: opts.gameType === 'omaha' ? 'omaha' : 'holdem',
       ticketPrice: Math.max(0, parseInt(opts.ticketPrice, 10) || 0),
       prizes: {
         1: (opts.prize1 || '').slice(0, 60) || '冠军奖品',
@@ -46,7 +47,7 @@ module.exports = function createTournamentModule(deps) {
 
   function publicView(t) {
     return {
-      id: t.id, name: t.name, ticketPrice: t.ticketPrice, prizes: t.prizes,
+      id: t.id, name: t.name, gameType: t.gameType || 'holdem', ticketPrice: t.ticketPrice, prizes: t.prizes,
       startingChips: t.startingChips, smallBlind: t.smallBlind, bigBlind: t.bigBlind,
       maxTableSize: t.maxTableSize, status: t.status,
       registeredCount: t.registered.length,
@@ -69,7 +70,7 @@ module.exports = function createTournamentModule(deps) {
     const acc = await accounts.authToken(accountToken);
     if (!acc) return { error: '登录状态已失效，请重新登录' };
     if (t.registered.some(r => r.username === acc.username)) return { error: '你已经报过名了' };
-    const pay = await accounts.adjustClubPoints(acc.username, -t.ticketPrice);
+    const pay = await accounts.adjustClubPoints(acc.username, -t.ticketPrice, '购买门票：' + t.name);
     if (pay.error) return { error: '俱乐部积分不足，无法购买门票（需要 ' + t.ticketPrice + '，当前 ' + acc.clubPoints + '）' };
     t.registered.push({ username: acc.username });
     return { ok: true, clubPoints: pay.clubPoints };
@@ -158,6 +159,14 @@ module.exports = function createTournamentModule(deps) {
     if (secondEntry) byPlace[2] = { username: secondEntry.username, prize: t.prizes[2] };
     if (thirdEntry) byPlace[3] = { username: thirdEntry.username, prize: t.prizes[3] };
     t.results = byPlace;
+
+    [1, 2, 3].forEach(rank => {
+      const r = byPlace[rank];
+      if (r && r.username) {
+        accounts.addReward(r.username, { tournamentName: t.name, rank, prize: r.prize })
+          .catch(e => console.error('写入获奖记录失败:', e.message));
+      }
+    });
 
     t.tableIds.forEach(rid => rooms.delete(rid));
     t.tableIds = [];
