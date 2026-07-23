@@ -13,6 +13,8 @@
   let lastError = null;
   let connSeq = 0;
   let reconnectTimer = null;
+  let account = null;       // {username, accountToken}
+  let accountPoints = null;
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cardHtml(c){
@@ -69,6 +71,7 @@
     connSeq++;
     const myConn = connSeq;
     clearTimeout(reconnectTimer);
+    if(ws){ try{ ws.onclose=null; ws.close(); }catch(e){} }
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(proto + '://' + location.host + '/ws');
     ws = socket;
@@ -83,6 +86,11 @@
         render();
       } else if(msg.type === 'state'){
         lastState = msg; lastError = null; render();
+      } else if(msg.type === 'account'){
+        account = { username: msg.username, accountToken: msg.accountToken };
+        accountPoints = msg.points;
+        localStorage.setItem('pokergo_account', JSON.stringify(account));
+        lastError = null; render();
       } else if(msg.type === 'error'){
         lastError = msg.message; render();
       }
@@ -101,6 +109,16 @@
     }
   }
 
+  function loginOrRegister(type, username, password){
+    connect(()=> send({type, username, password}));
+  }
+
+  function logout(){
+    account = null; accountPoints = null;
+    localStorage.removeItem('pokergo_account');
+    render();
+  }
+
   function joinRoom(rid, name){
     lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
     const saved = localStorage.getItem(storageKey(rid));
@@ -108,6 +126,8 @@
       if(saved){
         const s = JSON.parse(saved);
         send({type:'rejoin', roomId: rid, playerToken: s.playerToken});
+      } else if(account){
+        send({type:'join', roomId: rid, accountToken: account.accountToken});
       } else {
         send({type:'join', roomId: rid, name});
       }
@@ -119,22 +139,63 @@
 
     if(!roomId || !playerId){
       const lastRoom = prefillRoom || localStorage.getItem('poker_last_room') || '';
+
+      const accountBlock = account ? `
+        <div class="card">
+          <h2 class="section-title" style="font-size:20px;">已登录</h2>
+          <p class="section-sub">账号：<strong style="color:var(--cream);">${esc(account.username)}</strong>　积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong></p>
+          <p class="section-sub">加入房间时会自动带上这个身份和积分作为筹码，掉线时会自动进入托管（能过牌就过牌，否则弃牌），重新连上就恢复正常。</p>
+          <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="logoutBtn">退出登录</button></div>
+        </div>` : `
+        <div class="card">
+          <h2 class="section-title" style="font-size:20px;">账号登录（可选）</h2>
+          <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份加入，但积分不会保留。</p>
+          <div class="field"><label>用户名</label><input type="text" id="authUser" maxlength="20"></div>
+          <div class="field"><label>密码</label><input type="password" id="authPass" maxlength="40"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary auto" id="loginBtn">登录</button>
+            <button class="btn btn-ghost auto" id="registerBtn">注册新账号</button>
+          </div>
+        </div>`;
+
       app.innerHTML = `
+        ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
+        ${accountBlock}
         <div class="card">
           <h2 class="section-title">加入牌局</h2>
-          <p class="section-sub">向房主索要 6 位房间码，输入你的名字即可加入。你的手机屏幕只会显示你自己的底牌。</p>
-          ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
+          <p class="section-sub">向房主索要 6 位房间码即可加入。你的手机屏幕只会显示你自己的底牌。</p>
           <div class="field"><label>房间码</label><input type="text" id="roomInput" value="${esc(lastRoom)}" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:20px;"></div>
-          <div class="field"><label>你的名字</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>
+          ${account ? `<p class="section-sub">将以账号 <strong style="color:var(--cream);">${esc(account.username)}</strong> 身份加入</p>` : `<div class="field"><label>你的名字（访客）</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
           <div class="btn-row"><button class="btn btn-primary" id="joinBtn">加入</button></div>
         </div>`;
+
       document.getElementById('joinBtn').onclick = () => {
         const rid = document.getElementById('roomInput').value.trim().toUpperCase();
-        const name = document.getElementById('nameInput').value.trim();
         if(!rid){ alert('请输入房间码'); return; }
-        if(!name){ alert('请输入姓名'); return; }
-        joinRoom(rid, name);
+        if(account){
+          joinRoom(rid, null);
+        } else {
+          const name = document.getElementById('nameInput').value.trim();
+          if(!name){ alert('请输入姓名'); return; }
+          joinRoom(rid, name);
+        }
       };
+      const loginBtn = document.getElementById('loginBtn');
+      if(loginBtn) loginBtn.onclick = () => {
+        const u = document.getElementById('authUser').value.trim();
+        const p = document.getElementById('authPass').value;
+        if(!u || !p){ alert('请输入用户名和密码'); return; }
+        loginOrRegister('login', u, p);
+      };
+      const registerBtn = document.getElementById('registerBtn');
+      if(registerBtn) registerBtn.onclick = () => {
+        const u = document.getElementById('authUser').value.trim();
+        const p = document.getElementById('authPass').value;
+        if(!u || !p){ alert('请输入用户名和密码'); return; }
+        loginOrRegister('register', u, p);
+      };
+      const logoutBtn = document.getElementById('logoutBtn');
+      if(logoutBtn) logoutBtn.onclick = logout;
       return;
     }
 
@@ -181,7 +242,7 @@
         <div class="seat-avatar avatar-c${orig%9}">${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
-          <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}</div>
+          <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="seat-allin-tag" style="background:var(--muted);color:var(--ink);">托管中</span>':''}</div>
         </div>
         ${p.betThisStreet>0 ? `<div class="seat-bet-chip">${p.betThisStreet}</div>` : ''}
       </div>`;
@@ -292,7 +353,8 @@
     });
   }
 
-  // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）
+  // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）；
+  // 若没有正在进行的房间会话，则尝试用保存的账号 token 自动恢复登录状态
   (function init(){
     const lastRoom = prefillRoom || localStorage.getItem('poker_last_room');
     if(lastRoom){
@@ -304,6 +366,13 @@
         render();
         return;
       }
+    }
+    const savedAccount = localStorage.getItem('pokergo_account');
+    if(savedAccount){
+      try{
+        const a = JSON.parse(savedAccount);
+        if(a && a.accountToken) connect(()=> send({type:'account_auth', accountToken: a.accountToken}));
+      }catch(e){}
     }
     render();
   })();
