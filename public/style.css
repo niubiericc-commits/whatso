@@ -195,12 +195,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .gt-board{border:1px solid var(--border);border-radius:18px;padding:18px;background:radial-gradient(ellipse at center, var(--felt-light), var(--felt-dark));margin-bottom:14px;}
 .gt-potline{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:12.5px;color:var(--gold-bright);margin-bottom:12px;flex-wrap:wrap;gap:6px;}
 .community{display:flex;gap:6px;justify-content:center;margin:8px 0 16px;flex-wrap:wrap;min-height:64px;}
-.pcard{width:44px;height:62px;border-radius:7px;background:linear-gradient(165deg,#fffdf8,var(--cream) 60%);display:flex;flex-direction:column;
-  align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;position:relative;
-  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 3px 0 rgba(0,0,0,.06) inset, 0 6px 14px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,.3);
-  border:1px solid rgba(0,0,0,.06);}
-.pcard .corner{position:absolute;top:3px;left:4px;font-size:8px;line-height:1;letter-spacing:-0.5px;opacity:.75;}
-.pcard .r{font-size:15px;} .pcard .s{font-size:13px;}
+.pcard{width:52px;height:73px;border-radius:9px;background:linear-gradient(165deg,#fffef9,var(--cream) 55%,#efe8d8 100%);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:800;position:relative;gap:1px;
+  box-shadow:0 2px 0 rgba(255,255,255,.7) inset, 0 -3px 6px rgba(0,0,0,.08) inset, 0 8px 18px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,.35);
+  border:1px solid rgba(0,0,0,.08);}
+.pcard .r{font-size:19px;line-height:1;} .pcard .s{font-size:16px;line-height:1;}
 .pcard.red{color:var(--burgundy);} .pcard.black{color:var(--ink);}
 .pcard.back{background:repeating-linear-gradient(45deg, var(--gold) 0, var(--gold) 4px, var(--felt) 4px, var(--felt) 8px);border:2px solid var(--gold-bright);}
 .pcard.empty{background:rgba(255,255,255,0.04);box-shadow:none;border:1px dashed rgba(255,255,255,0.08);}
@@ -220,10 +219,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   background:linear-gradient(180deg, rgba(226,171,63,0.10), rgba(226,171,63,0.02)), var(--bg-1);
   text-align:center;box-shadow:var(--shadow-pop);max-width:640px;margin-left:auto;margin-right:auto;}
 .hole-cards{display:flex;justify-content:center;margin:14px 0 16px;flex-wrap:wrap;}
-.hole-cards .pcard{width:56px;height:78px;margin:0 -6px;box-shadow:0 8px 18px rgba(0,0,0,.5);}
+.hole-cards .pcard{width:68px;height:95px;margin:0 -8px;box-shadow:0 10px 22px rgba(0,0,0,.55);}
 .hole-cards .pcard:first-child{transform:rotate(-7deg) translateY(3px);}
 .hole-cards .pcard:last-child{transform:rotate(7deg) translateY(3px);}
-.hole-cards .pcard .r{font-size:19px;} .hole-cards .pcard .s{font-size:16px;}
+.hole-cards .pcard .r{font-size:24px;} .hole-cards .pcard .s{font-size:20px;}
 .hole-cards.omaha .pcard{width:48px;height:67px;margin:0 -4px;}
 .hole-cards.omaha .pcard:first-child{transform:rotate(-12deg) translateY(6px);}
 .hole-cards.omaha .pcard:nth-child(2){transform:rotate(-4deg);}
@@ -266,6 +265,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 
 /* ---------- poker table (只有这里保留绒布质感——真正坐上牌桌才用) ---------- */
 .table-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+
+/* ---------- 左下角战报框：显示这桌最近发生的事 ---------- */
+.table-log-box{position:absolute;left:2%;bottom:3%;z-index:6;width:min(46%,220px);max-height:30%;overflow-y:auto;
+  background:rgba(8,10,14,0.72);backdrop-filter:blur(6px);border:1px solid var(--border-strong);border-radius:10px;
+  padding:7px 9px;font-family:var(--font-mono);font-size:9.5px;line-height:1.65;color:var(--muted);
+  scrollbar-width:thin;}
+.table-log-box .log-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.table-log-box .log-line:first-child{color:var(--gold-bright);font-weight:700;}
+@media (min-width:860px){ .table-log-box{font-size:11px;width:min(30%,260px);padding:9px 11px;} }
 .balance-pill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border-strong);
   border-radius:999px;padding:6px 14px 6px 8px;font-family:var(--font-mono);font-weight:700;font-size:14px;color:var(--gold-bright);box-shadow:var(--shadow-card);}
 .balance-pill .coin{width:20px;height:20px;border-radius:50%;flex:none;background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);box-shadow:0 0 0 2px var(--ink);}
@@ -297,12 +305,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   font-size:12px;margin-bottom:8px;padding:4px 14px;border-radius:999px;
   background:linear-gradient(180deg,var(--gold-bright),var(--gold));box-shadow:0 4px 10px rgba(0,0,0,.4);white-space:nowrap;}
 .table-pot .chip-ico{width:12px;height:12px;border-radius:50%;background:repeating-conic-gradient(var(--ink) 0deg 45deg, var(--cream) 45deg 90deg);display:inline-block;box-shadow:0 0 0 1.5px var(--ink);}
-.table-community{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;}
-.table-community .pcard{width:32px;height:45px;}
-.table-community .pcard .r{font-size:12px;} .table-community .pcard .s{font-size:10px;}
+.table-community{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;}
+.table-community .pcard{width:40px;height:56px;}
+.table-community .pcard .r{font-size:15px;} .table-community .pcard .s{font-size:13px;}
 @media (min-width:860px){
-  .table-community .pcard{width:46px;height:64px;}
-  .table-community .pcard .r{font-size:17px;} .table-community .pcard .s{font-size:14px;}
+  .table-community .pcard{width:58px;height:81px;}
+  .table-community .pcard .r{font-size:21px;} .table-community .pcard .s{font-size:18px;}
   .table-pot{font-size:15px;padding:6px 18px;}
 }
 
@@ -331,15 +339,28 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   background:radial-gradient(circle at 35% 30%, #fff, #d8d2c2 70%);color:var(--ink);
   font-family:var(--font-mono);font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;
   box-shadow:0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.15);}
-.seat-bet-chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:11.5px;font-weight:800;
-  background:linear-gradient(180deg,rgba(20,28,20,0.95),rgba(8,16,13,0.92));color:var(--gold-bright);padding:4px 10px 4px 4px;border-radius:999px;
-  border:1.5px solid var(--gold-bright);margin-top:4px;box-shadow:0 3px 10px rgba(0,0,0,.5), 0 0 10px -2px rgba(255,216,115,0.4);
+.seat-bet-chip{position:absolute;transform:translate(-50%,-50%);z-index:4;display:inline-flex;align-items:center;gap:5px;
+  font-family:var(--font-mono);font-size:12px;font-weight:800;white-space:nowrap;
+  background:linear-gradient(180deg,rgba(20,28,20,0.97),rgba(8,16,13,0.95));color:var(--gold-bright);padding:5px 12px 5px 5px;border-radius:999px;
+  border:1.5px solid var(--gold-bright);box-shadow:0 4px 12px rgba(0,0,0,.55), 0 0 12px -2px rgba(255,216,115,0.5);
   animation:bet-chip-in .25s ease-out;}
-@keyframes bet-chip-in{from{opacity:0;transform:scale(.6) translateY(4px);}to{opacity:1;transform:scale(1) translateY(0);}}
-.seat-bet-chip::before{content:'';width:14px;height:14px;border-radius:50%;flex:none;
+@keyframes bet-chip-in{from{opacity:0;transform:translate(-50%,-50%) scale(.6);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
+.seat-bet-chip::before{content:'';width:15px;height:15px;border-radius:50%;flex:none;
   background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1.5px rgba(0,0,0,.5);}
-@media (min-width:860px){ .seat-bet-chip{font-size:14px;padding:5px 13px 5px 5px;} .seat-bet-chip::before{width:17px;height:17px;} }
+@media (min-width:860px){ .seat-bet-chip{font-size:15px;padding:6px 15px 6px 6px;} .seat-bet-chip::before{width:19px;height:19px;} }
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
+
+/* ---------- 行动提示：每次操作后短暂显示 CHECK/CALL/RAISE/FOLD ---------- */
+.action-flag{position:absolute;top:-2px;left:50%;transform:translate(-50%,-100%);z-index:5;
+  font-family:var(--font-mono);font-size:9px;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px;
+  white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.5);animation:action-flag-in .2s ease-out;}
+@keyframes action-flag-in{from{opacity:0;transform:translate(-50%,-100%) translateY(4px);}to{opacity:1;transform:translate(-50%,-100%) translateY(0);}}
+.action-flag.action-fold{background:var(--surface-2);color:var(--muted);border:1px solid var(--border-strong);}
+.action-flag.action-check{background:rgba(45,212,191,0.16);color:var(--teal-bright);border:1px solid rgba(45,212,191,0.4);}
+.action-flag.action-call{background:rgba(58,110,168,0.2);color:var(--blue-bright);border:1px solid rgba(92,143,201,0.5);}
+.action-flag.action-raise{background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--ink);}
+.action-flag.action-allin{background:linear-gradient(180deg,var(--burgundy-bright),var(--burgundy));color:#fff;}
+@media (min-width:860px){ .action-flag{font-size:11px;padding:4px 11px;} }
 
 /* ---------- 底池筹码飞向赢家的动画（起始位置由 JS 设置，具体移动靠 JS 切换 left/top 触发 transition） ---------- */
 .pot-fly-chip{position:absolute;width:18px;height:18px;border-radius:50%;z-index:8;pointer-events:none;
@@ -363,8 +384,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   animation:win-pop .45s cubic-bezier(.2,1.6,.4,1);pointer-events:none;}
 @keyframes win-pop{from{opacity:0;transform:translateX(-50%) translateY(10px) scale(.7);}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
 .win-burst .win-cards{display:flex;gap:2px;justify-content:center;margin-bottom:2px;filter:drop-shadow(0 0 14px rgba(255,216,115,0.65));}
-.win-burst .win-cards .pcard{width:34px;height:47px;}
-.win-burst .win-cards .pcard .r{font-size:13px;} .win-burst .win-cards .pcard .s{font-size:11px;}
+.win-burst .win-cards .pcard{width:42px;height:59px;}
+.win-burst .win-cards .pcard .r{font-size:16px;} .win-burst .win-cards .pcard .s{font-size:14px;}
 .win-burst .win-label{font-family:var(--font-display);font-size:20px;letter-spacing:.12em;
   background:linear-gradient(180deg,var(--gold-bright),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;
   text-shadow:0 0 18px rgba(255,216,115,0.5);}
