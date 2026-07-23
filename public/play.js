@@ -1206,23 +1206,35 @@
   (function init(){
     const savedTheme = getStrSetting('theme', 'emerald');
     if(savedTheme !== 'emerald') document.body.setAttribute('data-theme', savedTheme);
+
+    // 先把账号状态从本地存储里同步恢复出来（不等服务器确认），这样哪怕马上要重连房间，
+    // 界面上"是不是登录用户"这个判断也是对的；服务器那边的 account_auth 确认稍后跟上，刷新余额等数据。
+    const savedAccount = localStorage.getItem('pokergo_account');
+    let restoredAccount = null;
+    if(savedAccount){
+      try{
+        const a = JSON.parse(savedAccount);
+        if(a && a.accountToken) restoredAccount = a;
+      }catch(e){}
+    }
+    if(restoredAccount) account = restoredAccount;
+
     const lastRoom = prefillRoom || localStorage.getItem('poker_last_room');
     if(lastRoom){
       const saved = localStorage.getItem(storageKey(lastRoom));
       if(saved){
         const s = JSON.parse(saved);
         roomId = lastRoom;
-        connect(()=> send({type:'rejoin', roomId: lastRoom, playerToken: s.playerToken}));
+        connect(()=>{
+          send({type:'rejoin', roomId: lastRoom, playerToken: s.playerToken});
+          if(restoredAccount) send({type:'account_auth', accountToken: restoredAccount.accountToken});
+        });
         render();
         return;
       }
     }
-    const savedAccount = localStorage.getItem('pokergo_account');
-    if(savedAccount){
-      try{
-        const a = JSON.parse(savedAccount);
-        if(a && a.accountToken) connect(()=> send({type:'account_auth', accountToken: a.accountToken}));
-      }catch(e){}
+    if(restoredAccount){
+      connect(()=> send({type:'account_auth', accountToken: restoredAccount.accountToken}));
     }
     if(getSetting('notifyNewTournaments', false) && 'Notification' in window && Notification.permission==='granted'){
       startTournamentNotifyWatcher();
