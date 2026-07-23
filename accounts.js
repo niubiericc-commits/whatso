@@ -361,7 +361,10 @@ async function setClubPoints(username, value) {
   const key = (username || '').trim().toLowerCase();
   const u = await getUser(key);
   if (!u) return { error: '账号不存在' };
-  u.clubPoints = Math.max(0, Math.round(value));
+  const next = Math.max(0, Math.round(value));
+  const delta = next - (u.clubPoints || 0);
+  if (delta !== 0) pushHistory(u, { kind: 'club', delta, balance: next, note: '现金桌筹码结算' });
+  u.clubPoints = next;
   await setUser(key, u);
   return { clubPoints: u.clubPoints };
 }
