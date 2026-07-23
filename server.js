@@ -8,6 +8,7 @@ const accounts = require('./accounts');
 const createTournamentModule = require('./tournament');
 
 const app = express();
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
 
@@ -53,6 +54,49 @@ function randomId(len = 6) {
   return s;
 }
 function randomToken() { return crypto.randomBytes(16).toString('hex'); }
+
+// ---------------- 俱乐部管理员 REST 接口（不走 WebSocket，用最普通的 HTTP 请求，更不容易出连接问题）----------------
+function requireAdmin(req, res, next) {
+  const token = req.headers['x-admin-token'];
+  if (!accounts.isAdminToken(token)) { res.status(401).json({ error: '管理员身份无效，请重新登录' }); return; }
+  next();
+}
+
+app.post('/api/admin/login', (req, res) => {
+  const r = accounts.adminLogin((req.body || {}).password);
+  if (r.error) { res.status(401).json({ error: r.error }); return; }
+  res.json({ adminToken: r.adminToken });
+});
+
+app.get('/api/admin/tournaments', requireAdmin, (req, res) => {
+  res.json({ tournaments: tm.listTournaments() });
+});
+
+app.post('/api/admin/tournaments', requireAdmin, (req, res) => {
+  tm.createTournament(req.body || {});
+  res.json({ tournaments: tm.listTournaments() });
+});
+
+app.post('/api/admin/tournaments/:id/start', requireAdmin, (req, res) => {
+  const t = tm.tournaments.get(req.params.id);
+  if (!t) { res.status(404).json({ error: '赛事不存在' }); return; }
+  const r = tm.startTournament(t, { createRoomForTable });
+  if (r && r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json({ tournaments: tm.listTournaments() });
+});
+
+app.get('/api/admin/accounts/:username', requireAdmin, async (req, res) => {
+  const info = await accounts.getAccountInfo(req.params.username);
+  if (!info) { res.status(404).json({ error: '账号不存在' }); return; }
+  res.json(info);
+});
+
+app.post('/api/admin/accounts/:username/club-points', requireAdmin, async (req, res) => {
+  const delta = parseInt((req.body || {}).delta, 10) || 0;
+  const r = await accounts.adjustClubPoints(req.params.username, delta);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json({ username: req.params.username, clubPoints: r.clubPoints });
+});
 
 function send(ws, obj) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
@@ -203,49 +247,6 @@ async function handleMessage(ws, msg) {
       const acc = await accounts.authToken(msg.accountToken);
       if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录' }); return; }
       send(ws, { type: 'account', username: acc.username, points: acc.points, clubPoints: acc.clubPoints, accountToken: msg.accountToken });
-      break;
-    }
-
-    // ---------------- 俱乐部管理员 ----------------
-    case 'admin_login': {
-      const r = accounts.adminLogin(msg.password);
-      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      ws.isAdmin = true;
-      send(ws, { type: 'admin_ok', adminToken: r.adminToken });
-      break;
-    }
-    case 'admin_create_tournament': {
-      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
-      const t = tm.createTournament(msg);
-      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
-      break;
-    }
-    case 'admin_start_tournament': {
-      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
-      const t = tm.tournaments.get(msg.tournamentId);
-      if (!t) { send(ws, { type: 'error', message: '赛事不存在' }); return; }
-      const r = tm.startTournament(t, { createRoomForTable });
-      if (r && r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
-      break;
-    }
-    case 'admin_list_tournaments': {
-      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
-      send(ws, { type: 'admin_tournaments', tournaments: tm.listTournaments() });
-      break;
-    }
-    case 'admin_lookup_account': {
-      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
-      const info = await accounts.getAccountInfo(msg.username);
-      if (!info) { send(ws, { type: 'error', message: '账号不存在' }); return; }
-      send(ws, { type: 'admin_account_info', ...info });
-      break;
-    }
-    case 'admin_adjust_club_points': {
-      if (!accounts.isAdminToken(msg.adminToken)) { send(ws, { type: 'error', message: '管理员身份无效，请重新登录' }); return; }
-      const r = await accounts.adjustClubPoints(msg.username, parseInt(msg.delta, 10) || 0);
-      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      send(ws, { type: 'admin_account_info', username: msg.username, clubPoints: r.clubPoints });
       break;
     }
 
