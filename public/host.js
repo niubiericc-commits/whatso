@@ -60,6 +60,7 @@
     socket.onclose = () => {
       if(myConn!==connSeq) return;
       connStatus = 'closed';
+      if(!lastError) lastError = '与服务器的连接断开了（可能是网络问题，或服务器暂时无法访问，免费版服务器休眠唤醒有时会断一次再重连）。';
       reconnectTimer = setTimeout(()=>{
         if(pageMode==='host' && roomId && hostToken) connect(()=> send({type:'host_auth', roomId, hostToken}));
         else if(pageMode==='club' && adminToken) connect(refreshTournaments);
@@ -320,7 +321,7 @@
         ? `<p class="section-sub">正在连接服务器…</p>
            <p class="section-sub" id="clubTimeoutHint" style="display:none;">一直连不上？免费版服务器休眠唤醒可能要等 30 秒左右；如果等了很久还不行，点下面按钮重试。</p>
            <div class="btn-row" id="clubTimeoutBtnRow" style="display:none;"><button class="btn btn-ghost" id="clubRetryBtn">重新尝试连接</button></div>`
-        : '';
+        : (lastError ? `<div class="btn-row"><button class="btn btn-ghost" id="clubRetryBtn">重新尝试连接</button></div>` : '');
       setTimeout(()=>{
         if(connStatus==='connecting'){
           const hint = document.getElementById('clubTimeoutHint');
