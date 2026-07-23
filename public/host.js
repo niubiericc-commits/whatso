@@ -23,6 +23,9 @@
   let tournaments = [];
   let lookupResult = null;
   let clubListTimer = null;
+  let promotionAdmin = { announcement:{title:'',body:''}, packages:[], tiers:{VIP:'',SVIP:''} };
+  let levelsAdmin = [];
+  let shopAdmin = [];
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cardHtml(c){
@@ -114,6 +117,13 @@
       headers: Object.assign({'Content-Type':'application/json'}, adminToken?{'X-Admin-Token':adminToken}:{}),
       body: JSON.stringify(body||{})
     });
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+    if(!res.ok) throw new Error(data.error || ('请求失败（状态码 ' + res.status + '）'));
+    return data;
+  }
+  async function apiDelete(path){
+    const res = await fetch(path, { method:'DELETE', headers: adminToken?{'X-Admin-Token':adminToken}:{} });
     let data = {};
     try{ data = await res.json(); }catch(e){}
     if(!res.ok) throw new Error(data.error || ('请求失败（状态码 ' + res.status + '）'));
@@ -338,6 +348,20 @@
     }catch(e){ lastError = e.message; }
     render();
   }
+  async function refreshPromotionAdmin(){
+    try{
+      promotionAdmin = await apiGet('/api/promotion');
+    }catch(e){ /* 静默失败，不打扰 */ }
+    render();
+  }
+  async function refreshLevelsAdmin(){
+    try{ levelsAdmin = (await apiGet('/api/admin/levels')).levels; }catch(e){}
+    render();
+  }
+  async function refreshShopAdmin(){
+    try{ shopAdmin = (await apiGet('/api/admin/shop')).shop; }catch(e){}
+    render();
+  }
   function logoutClub(){
     adminToken = null;
     localStorage.removeItem('pokergo_admin_token');
@@ -364,7 +388,7 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
           <div>
-            <h3 style="font-family:var(--font-display);font-size:22px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)}</h3>
+            <h3 style="font-family:var(--font-display);font-size:22px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)} <span class="seat-allin-tag" style="background:var(--gold);color:var(--ink);">${t.gameType==='omaha'?'Omaha':"Hold'em"}</span></h3>
             <p class="section-sub" style="margin:0;">状态：${TSTATUS_LABEL[t.status]||t.status} · 门票 ${t.ticketPrice} 俱乐部积分 · 已报名 ${t.registeredCount} 人 · 在场 ${t.remainingCount} 人 · 每桌最多 ${t.maxTableSize} 人</p>
           </div>
           ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-start="${t.id}">开赛</button>` : ''}
@@ -389,19 +413,98 @@
         <div class="btn-row"><button class="btn btn-ghost auto" id="lookupBtn">查询</button></div>
         ${lookupResult ? `
         <div class="hint-box" style="margin-top:12px;">
-          账号：${esc(lookupResult.username)}　筹码积分：${lookupResult.points!==undefined?lookupResult.points:'-'}　俱乐部积分：<strong style="color:var(--gold-bright);">${lookupResult.clubPoints}</strong>
+          账号：${esc(lookupResult.username)}　筹码积分：${lookupResult.points!==undefined?lookupResult.points:'-'}　俱乐部积分：<strong style="color:var(--gold-bright);">${lookupResult.clubPoints}</strong>　会员等级：<strong style="color:var(--gold-bright);">${lookupResult.tier&&lookupResult.tier!=='none'?lookupResult.tier:'普通用户'}</strong>　成长值：<strong style="color:var(--gold-bright);">${lookupResult.growth||0}</strong>（Lv.${lookupResult.level||0}）
         </div>
         <div class="field" style="margin-top:10px;"><label>调整俱乐部积分（正数增加，负数扣减）</label><input type="number" id="adjustDelta" value="100"></div>
         <div class="btn-row"><button class="btn btn-primary auto" id="adjustBtn">应用调整</button></div>
+        <div class="field" style="margin-top:14px;"><label>设置会员等级</label>
+          <select id="tierSelect">
+            <option value="none" ${(!lookupResult.tier||lookupResult.tier==='none')?'selected':''}>普通用户</option>
+            <option value="VIP" ${lookupResult.tier==='VIP'?'selected':''}>VIP</option>
+            <option value="SVIP" ${lookupResult.tier==='SVIP'?'selected':''}>SVIP</option>
+          </select>
+        </div>
+        <div class="btn-row"><button class="btn btn-ghost auto" id="setTierBtn">应用等级</button></div>
+        <div class="field" style="margin-top:14px;"><label>记录一笔消费（元，线下转账到账后填这里，1元=1成长值，会自动检查升级）</label>
+          <div style="display:flex;gap:8px;">
+            <input type="number" id="rechargeAmount" placeholder="金额">
+            <input type="text" id="rechargeNote" placeholder="备注，例如：微信转账" style="flex:1.5;">
+          </div>
+        </div>
+        <div class="btn-row"><button class="btn btn-primary auto" id="rechargeBtn">记录消费</button></div>
         ` : ''}
       </div>
 
       <div class="card">
+        <h2 class="section-title">成长等级管理</h2>
+        <p class="section-sub">玩家累计消费换算的成长值达到门槛，会自动升级并发放奖励（可以是俱乐部积分，也可以只是文字说明的实物奖励）。</p>
+        ${(levelsAdmin||[]).map(l=>`
+          <div class="showdown-row"><span>Lv.${l.level}（满 ${l.threshold} 成长值）：${esc(l.rewardText)}${l.rewardClubPoints?' +'+l.rewardClubPoints+'积分':''}</span>
+          <button class="btn btn-danger btn-sm auto" data-dellevel="${l.level}">删除</button></div>`).join('') || '<p class="section-sub">还没有配置等级</p>'}
+        <div class="field" style="display:flex;gap:8px;margin-top:12px;">
+          <input type="number" id="lvLevel" placeholder="等级数字，如 1">
+          <input type="number" id="lvThreshold" placeholder="所需成长值">
+          <input type="number" id="lvClubPoints" placeholder="奖励俱乐部积分(可0)">
+        </div>
+        <div class="field"><input type="text" id="lvRewardText" placeholder="奖励说明，例如：赠送1张门票"></div>
+        <div class="btn-row"><button class="btn btn-ghost auto" id="addLevelBtn">保存该等级</button></div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">积分商城管理</h2>
+        <p class="section-sub">玩家可以用成长值直接兑换，不需要等升级；奖励可以是俱乐部积分，也可以是纯文字说明的实物奖品。</p>
+        ${(shopAdmin||[]).map(s=>`
+          <div class="showdown-row"><span>${esc(s.name)}（${s.costGrowth}成长值${s.rewardClubPoints?' → +'+s.rewardClubPoints+'积分':''}）${s.note?' - '+esc(s.note):''}</span>
+          <button class="btn btn-danger btn-sm auto" data-delshop="${s.id}">删除</button></div>`).join('') || '<p class="section-sub">还没有上架商品</p>'}
+        <div class="field" style="margin-top:12px;"><input type="text" id="shopName" placeholder="商品名称，例如：扑克筹码套装"></div>
+        <div class="field" style="display:flex;gap:8px;">
+          <input type="number" id="shopCost" placeholder="需要多少成长值">
+          <input type="number" id="shopClubPoints" placeholder="兑换后给多少俱乐部积分(可0)">
+        </div>
+        <div class="field"><input type="text" id="shopNote" placeholder="备注，例如：实物奖品需线下领取"></div>
+        <div class="btn-row"><button class="btn btn-ghost auto" id="addShopBtn">上架商品</button></div>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">推广内容管理</h2>
+        <p class="section-sub">这些内容会显示在玩家端"个人中心 → Promotion"页面。充值/升级都需要玩家线下转账后，你在上面"查找账号"里手动给他加积分/改等级。</p>
+
+        <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:0 0 8px;">公告</h3>
+        <div class="field"><label>标题</label><input type="text" id="promoTitle" value="${esc((promotionAdmin.announcement&&promotionAdmin.announcement.title)||'')}"></div>
+        <div class="field"><label>正文</label><textarea id="promoBody" style="min-height:80px;">${esc((promotionAdmin.announcement&&promotionAdmin.announcement.body)||'')}</textarea></div>
+        <div class="btn-row"><button class="btn btn-ghost auto" id="savePromoBtn">保存公告</button></div>
+
+        <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:20px 0 8px;">充值套餐</h3>
+        ${(promotionAdmin.packages||[]).map(p=>`
+          <div class="showdown-row"><span>¥${p.amountRMB} → ${p.tickets}张门票${p.clubPoints?' +'+p.clubPoints+'积分':''}（${esc(p.note||'')}）</span>
+          <button class="btn btn-danger btn-sm auto" data-delpkg="${p.id}">删除</button></div>`).join('') || '<p class="section-sub">还没有套餐</p>'}
+        <div class="field" style="display:flex;gap:8px;margin-top:12px;">
+          <input type="number" id="pkgAmount" placeholder="¥金额" style="flex:1;">
+          <input type="number" id="pkgTickets" placeholder="门票张数" style="flex:1;">
+          <input type="number" id="pkgClubPoints" placeholder="额外积分" style="flex:1;">
+        </div>
+        <div class="field"><input type="text" id="pkgNote" placeholder="套餐说明，例如：首充特惠"></div>
+        <div class="btn-row"><button class="btn btn-ghost auto" id="addPkgBtn">添加套餐</button></div>
+
+        <h3 style="font-family:var(--font-display);font-size:18px;color:var(--gold-bright);margin:20px 0 8px;">会员等级说明</h3>
+        <div class="field"><label>VIP 权益说明</label><textarea id="tierVipText" style="min-height:60px;">${esc((promotionAdmin.tiers&&promotionAdmin.tiers.VIP)||'')}</textarea></div>
+        <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="saveTierVipBtn">保存 VIP 说明</button></div>
+        <div class="field" style="margin-top:12px;"><label>SVIP 权益说明</label><textarea id="tierSvipText" style="min-height:60px;">${esc((promotionAdmin.tiers&&promotionAdmin.tiers.SVIP)||'')}</textarea></div>
+        <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="saveTierSvipBtn">保存 SVIP 说明</button></div>
+      </div>
+
+      <div class="card">
         <h2 class="section-title">创建定制赛事</h2>
-        <p class="section-sub">门票用俱乐部积分购买；奖品是文字说明，实际奖品由你线下发放，系统只负责记录和排名。</p>
+        <p class="section-sub">门票用俱乐部积分购买；奖品是文字说明，实际奖品由你线下发放，系统只负责记录和排名。门票设为 0 就是免费赛事，会单独归到玩家端"免费比赛"分类里。</p>
         <div class="field"><label>赛事名称</label><input type="text" id="tName" value="定制锦标赛"></div>
+        <div class="field"><label>游戏类型</label>
+          <select id="tGameType">
+            <option value="holdem">德州扑克 Hold'em</option>
+            <option value="omaha">奥马哈 Omaha</option>
+          </select>
+        </div>
         <div class="field" style="display:flex;gap:12px;">
-          <div style="flex:1"><label>门票价格（俱乐部积分）</label><input type="number" id="tTicket" value="100" min="0"></div>
+          <div style="flex:1"><label>门票价格（俱乐部积分，0=免费）</label><input type="number" id="tTicket" value="100" min="0"></div>
           <div style="flex:1"><label>每桌最多人数</label><input type="number" id="tMaxTable" value="9" min="2" max="9"></div>
         </div>
         <div class="field" style="display:flex;gap:12px;">
@@ -436,6 +539,9 @@
         localStorage.setItem('pokergo_admin_token', adminToken);
         clubBusy = false;
         await refreshTournaments();
+        await refreshPromotionAdmin();
+        await refreshLevelsAdmin();
+        await refreshShopAdmin();
       }catch(e){
         lastError = e.message; clubBusy = false; render();
       }
@@ -463,11 +569,117 @@
       }catch(e){ lastError = e.message; }
       render();
     };
+    const setTierBtn = document.getElementById('setTierBtn');
+    if(setTierBtn) setTierBtn.onclick = async () => {
+      const tier = document.getElementById('tierSelect').value;
+      try{
+        const r = await apiPost('/api/admin/accounts/' + encodeURIComponent(lookupResult.username) + '/tier', { tier });
+        lookupResult = Object.assign({}, lookupResult, { tier: r.tier });
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    const rechargeBtn = document.getElementById('rechargeBtn');
+    if(rechargeBtn) rechargeBtn.onclick = async () => {
+      const amountRMB = parseInt(document.getElementById('rechargeAmount').value, 10);
+      if(!amountRMB || amountRMB<=0){ alert('请输入金额'); return; }
+      const note = document.getElementById('rechargeNote').value.trim();
+      try{
+        const r = await apiPost('/api/admin/accounts/' + encodeURIComponent(lookupResult.username) + '/recharge', { amountRMB, note });
+        lookupResult = Object.assign({}, lookupResult, { growth: r.growth, level: r.level, clubPoints: r.clubPoints });
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    const addLevelBtn = document.getElementById('addLevelBtn');
+    if(addLevelBtn) addLevelBtn.onclick = async () => {
+      try{
+        const r = await apiPost('/api/admin/levels', {
+          level: parseInt(document.getElementById('lvLevel').value,10)||0,
+          threshold: parseInt(document.getElementById('lvThreshold').value,10)||0,
+          rewardClubPoints: parseInt(document.getElementById('lvClubPoints').value,10)||0,
+          rewardText: document.getElementById('lvRewardText').value.trim()
+        });
+        levelsAdmin = r.levels; lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    document.querySelectorAll('[data-dellevel]').forEach(b=>{
+      b.onclick = async () => {
+        try{ levelsAdmin = (await apiDelete('/api/admin/levels/' + encodeURIComponent(b.dataset.dellevel))).levels; lastError=null; }
+        catch(e){ lastError = e.message; }
+        render();
+      };
+    });
+    const addShopBtn = document.getElementById('addShopBtn');
+    if(addShopBtn) addShopBtn.onclick = async () => {
+      try{
+        const r = await apiPost('/api/admin/shop', {
+          name: document.getElementById('shopName').value.trim(),
+          costGrowth: parseInt(document.getElementById('shopCost').value,10)||0,
+          rewardClubPoints: parseInt(document.getElementById('shopClubPoints').value,10)||0,
+          note: document.getElementById('shopNote').value.trim()
+        });
+        shopAdmin = r.shop; lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    document.querySelectorAll('[data-delshop]').forEach(b=>{
+      b.onclick = async () => {
+        try{ shopAdmin = (await apiDelete('/api/admin/shop/' + encodeURIComponent(b.dataset.delshop))).shop; lastError=null; }
+        catch(e){ lastError = e.message; }
+        render();
+      };
+    });
+    const savePromoBtn = document.getElementById('savePromoBtn');
+    if(savePromoBtn) savePromoBtn.onclick = async () => {
+      try{
+        promotionAdmin = await apiPost('/api/admin/promotion/announcement', {
+          title: document.getElementById('promoTitle').value.trim(),
+          body: document.getElementById('promoBody').value.trim()
+        });
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    const addPkgBtn = document.getElementById('addPkgBtn');
+    if(addPkgBtn) addPkgBtn.onclick = async () => {
+      try{
+        promotionAdmin = await apiPost('/api/admin/promotion/packages', {
+          amountRMB: parseInt(document.getElementById('pkgAmount').value,10)||0,
+          tickets: parseInt(document.getElementById('pkgTickets').value,10)||0,
+          clubPoints: parseInt(document.getElementById('pkgClubPoints').value,10)||0,
+          note: document.getElementById('pkgNote').value.trim()
+        });
+        lastError = null;
+      }catch(e){ lastError = e.message; }
+      render();
+    };
+    document.querySelectorAll('[data-delpkg]').forEach(b=>{
+      b.onclick = async () => {
+        try{ promotionAdmin = await apiDelete('/api/admin/promotion/packages/' + encodeURIComponent(b.dataset.delpkg)); lastError=null; }
+        catch(e){ lastError = e.message; }
+        render();
+      };
+    });
+    const saveTierVipBtn = document.getElementById('saveTierVipBtn');
+    if(saveTierVipBtn) saveTierVipBtn.onclick = async () => {
+      try{ promotionAdmin = await apiPost('/api/admin/promotion/tiers', { tier:'VIP', text: document.getElementById('tierVipText').value.trim() }); lastError=null; }
+      catch(e){ lastError = e.message; }
+      render();
+    };
+    const saveTierSvipBtn = document.getElementById('saveTierSvipBtn');
+    if(saveTierSvipBtn) saveTierSvipBtn.onclick = async () => {
+      try{ promotionAdmin = await apiPost('/api/admin/promotion/tiers', { tier:'SVIP', text: document.getElementById('tierSvipText').value.trim() }); lastError=null; }
+      catch(e){ lastError = e.message; }
+      render();
+    };
     const createTBtn = document.getElementById('createTBtn');
     if(createTBtn) createTBtn.onclick = async () => {
       try{
         const r = await apiPost('/api/admin/tournaments', {
           name: document.getElementById('tName').value.trim(),
+          gameType: document.getElementById('tGameType').value,
           ticketPrice: parseInt(document.getElementById('tTicket').value,10)||0,
           maxTableSize: parseInt(document.getElementById('tMaxTable').value,10)||9,
           startingChips: parseInt(document.getElementById('tChips').value,10)||1000,
@@ -513,7 +725,7 @@
     const goHostBtn = document.getElementById('goHostBtn');
     if(goHostBtn) goHostBtn.onclick = () => { pageMode='host'; lastError=null; render(); if(roomId && hostToken) connect(()=> send({type:'host_auth', roomId, hostToken})); };
     const goClubBtn = document.getElementById('goClubBtn');
-    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken) refreshTournaments(); };
+    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken){ refreshTournaments(); refreshPromotionAdmin(); refreshLevelsAdmin(); refreshShopAdmin(); } };
 
     if(pageMode==='host') bindHostEvents();
     if(pageMode==='club') bindClubEvents();
