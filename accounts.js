@@ -87,10 +87,10 @@ async function register(username, password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = hashPassword(password, salt);
   const token = makeToken();
-  const record = { username: name, salt, hash, points: STARTING_POINTS, token };
+  const record = { username: name, salt, hash, points: STARTING_POINTS, clubPoints: 0, token };
   await setUser(key, record);
   await setTokenIndex(token, key);
-  return { username: name, points: STARTING_POINTS, accountToken: token };
+  return { username: name, points: STARTING_POINTS, clubPoints: 0, accountToken: token };
 }
 
 async function login(username, password) {
@@ -102,7 +102,7 @@ async function login(username, password) {
   u.token = token;
   await setUser(key, u);
   await setTokenIndex(token, key);
-  return { username: u.username, points: u.points, accountToken: token };
+  return { username: u.username, points: u.points, clubPoints: u.clubPoints || 0, accountToken: token };
 }
 
 async function authToken(token) {
@@ -111,7 +111,7 @@ async function authToken(token) {
   if (!key) return null;
   const u = await getUser(key);
   if (!u) return null;
-  return { username: u.username, points: u.points };
+  return { username: u.username, points: u.points, clubPoints: u.clubPoints || 0 };
 }
 
 async function updatePoints(username, points) {
@@ -122,4 +122,53 @@ async function updatePoints(username, points) {
   await setUser(key, u);
 }
 
+// 俱乐部积分：跟桌上筹码积分(points)完全独立的第二种货币，只用来买锦标赛门票。
+// delta 可正可负；返回调整后的余额，余额不足时返回 { error }
+async function adjustClubPoints(username, delta) {
+  const key = (username || '').trim().toLowerCase();
+  const u = await getUser(key);
+  if (!u) return { error: '账号不存在' };
+  const next = (u.clubPoints || 0) + delta;
+  if (next < 0) return { error: '俱乐部积分不足' };
+  u.clubPoints = next;
+  await setUser(key, u);
+  return { clubPoints: next };
+}
+
+async function setClubPoints(username, value) {
+  const key = (username || '').trim().toLowerCase();
+  const u = await getUser(key);
+  if (!u) return { error: '账号不存在' };
+  u.clubPoints = Math.max(0, Math.round(value));
+  await setUser(key, u);
+  return { clubPoints: u.clubPoints };
+}
+
+async function getAccountInfo(username) {
+  const key = (username || '').trim().toLowerCase();
+  const u = await getUser(key);
+  if (!u) return null;
+  return { username: u.username, points: u.points, clubPoints: u.clubPoints || 0 };
+}
+
+// ---------------- 管理员（俱乐部后台）----------------
+// 独立于普通用户账号，用一个环境变量密码登录；不持久化会话，重启服务需要重新登录。
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'pokergo_admin_2026';
+const validAdminTokens = new Set();
+
+function adminLogin(password) {
+  if (password !== ADMIN_PASSWORD) return { error: '管理员密码错误' };
+  const token = makeToken();
+  validAdminTokens.add(token);
+  return { adminToken: token };
+}
+function isAdminToken(token) {
+  return !!token && validAdminTokens.has(token);
+}
+
+module.exports = {
+  load, register, login, authToken, updatePoints,
+  adjustClubPoints, setClubPoints, getAccountInfo,
+  adminLogin, isAdminToken
+};
 module.exports = { load, register, login, authToken, updatePoints };
