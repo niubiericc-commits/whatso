@@ -1,5 +1,15 @@
 const { newDeck, shuffle, best7, bestOmaha, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
 
+const RANK_TXT = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
+const SUIT_TXT = { s: '♠', h: '♥', d: '♦', c: '♣' };
+function cardTxt(c) { return (RANK_TXT[c.r] || c.r) + SUIT_TXT[c.s]; }
+
+function pushLog(room, text) {
+  room.log = room.log || [];
+  room.log.unshift({ text, time: Date.now() });
+  if (room.log.length > 50) room.log.length = 50;
+}
+
 function nextActiveSeat(room, idx) {
   const arr = room.activeSeats;
   const pos = arr.indexOf(idx);
@@ -30,7 +40,7 @@ function dealHand(room) {
   if (!room.activeSeats.includes(room.dealerIdx)) room.dealerIdx = room.activeSeats[0];
 
   room.players.forEach(p => {
-    p.cards = []; p.folded = p.chips <= 0; p.allIn = false; p.betThisStreet = 0; p.totalContrib = 0;
+    p.cards = []; p.folded = p.chips <= 0; p.allIn = false; p.betThisStreet = 0; p.totalContrib = 0; p.lastAction = null;
   });
   room.pot = 0; room.community = []; room.stage = 'preflop'; room.results = null;
   room.handNumber = (room.handNumber || 0) + 1;
@@ -47,8 +57,12 @@ function dealHand(room) {
   postBlind(room, sbIdx, room.smallBlind);
   postBlind(room, bbIdx, room.bigBlind);
   room.currentBet = room.bigBlind; room.sbIdx = sbIdx; room.bbIdx = bbIdx;
+  room.minRaise = room.bigBlind; // 标准规则：第一次加注的最小增量至少要等于大盲
   room.actionQueue = rotateFrom(room, startIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
   room.turn = room.actionQueue[0];
+  pushLog(room, `—— 第 ${room.handNumber} 局开局 ——`);
+  pushLog(room, `${room.players[sbIdx].name} 下小盲 ${room.smallBlind}`);
+  pushLog(room, `${room.players[bbIdx].name} 下大盲 ${room.bigBlind}`);
   return {};
 }
 
@@ -57,6 +71,7 @@ function checkSinglePlayerLeft(room) {
   if (alive.length === 1) {
     alive[0].chips += room.pot;
     room.results = [{ amount: room.pot, winners: [alive[0].name], handName: '（其余玩家已弃牌）' }];
+    pushLog(room, `${alive[0].name} 获胜，赢得底池 ${room.pot}（其余玩家已弃牌）`);
     room.pot = 0; room.stage = 'showdown'; room.turn = null;
     return true;
   }
@@ -76,11 +91,12 @@ function advanceStreet(room) {
     runShowdown(room);
     return;
   }
-  if (room.stage === 'preflop') { room.stage = 'flop'; room.community.push(room.deck.pop(), room.deck.pop(), room.deck.pop()); }
-  else if (room.stage === 'flop') { room.stage = 'turn'; room.community.push(room.deck.pop()); }
-  else if (room.stage === 'turn') { room.stage = 'river'; room.community.push(room.deck.pop()); }
-  room.players.forEach(p => p.betThisStreet = 0);
+  if (room.stage === 'preflop') { room.stage = 'flop'; room.community.push(room.deck.pop(), room.deck.pop(), room.deck.pop()); pushLog(room, `翻牌：${room.community.map(cardTxt).join(' ')}`); }
+  else if (room.stage === 'flop') { room.stage = 'turn'; room.community.push(room.deck.pop()); pushLog(room, `转牌：${cardTxt(room.community[room.community.length-1])}`); }
+  else if (room.stage === 'turn') { room.stage = 'river'; room.community.push(room.deck.pop()); pushLog(room, `河牌：${cardTxt(room.community[room.community.length-1])}`); }
+  room.players.forEach(p => { p.betThisStreet = 0; p.lastAction = null; });
   room.currentBet = 0;
+  room.minRaise = room.bigBlind; // 每条新街，起始最小加注额重新等于大盲
   room.actionQueue = rotateFrom(room, room.dealerIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
   if (room.actionQueue.length === 0) { advanceStreet(room); return; }
   room.turn = room.actionQueue[0];
@@ -105,7 +121,9 @@ function runShowdown(room) {
     const share = Math.floor(pot.amount / winners.length);
     let rem = pot.amount - share * winners.length;
     winners.forEach((w, i) => { w.chips += share + (i < rem ? 1 : 0); });
-    room.results.push({ amount: pot.amount, winners: winners.map(w => w.name), handName: bestVal ? HAND_NAMES[bestVal[0]] : '' });
+    const handName = bestVal ? HAND_NAMES[bestVal[0]] : '';
+    room.results.push({ amount: pot.amount, winners: winners.map(w => w.name), handName });
+    pushLog(room, `摊牌：${winners.map(w => w.name).join('、')} 以「${handName}」赢得 ${pot.amount}`);
   });
   room.pot = 0; room.stage = 'showdown'; room.turn = null;
 }
@@ -119,6 +137,8 @@ function applyAction(room, playerId, action, amount) {
 
   if (action === 'fold') {
     p.folded = true;
+    p.lastAction = 'fold';
+    pushLog(room, `${p.name} 弃牌`);
     room.actionQueue = room.actionQueue.filter(i => i !== idx);
     proceed(room); return {};
   }
@@ -129,6 +149,11 @@ function applyAction(room, playerId, action, amount) {
       const pay = Math.min(need, p.chips);
       p.chips -= pay; p.betThisStreet += pay; p.totalContrib += pay; room.pot += pay;
       if (p.chips === 0) p.allIn = true;
+      p.lastAction = p.allIn ? 'allin' : 'call';
+      pushLog(room, `${p.name} 跟注 ${pay}${p.allIn ? '（全下）' : ''}`);
+    } else {
+      p.lastAction = 'check';
+      pushLog(room, `${p.name} 过牌`);
     }
     room.actionQueue = room.actionQueue.filter(i => i !== idx);
     proceed(room); return {};
@@ -139,10 +164,19 @@ function applyAction(room, playerId, action, amount) {
     const capped = Math.min(toAmount, p.betThisStreet + p.chips);
     const need = capped - p.betThisStreet;
     if (need <= 0) return { error: '筹码不足' };
+    const minRequired = room.currentBet + (room.minRaise || room.bigBlind);
+    const isFullRaise = capped >= minRequired;
+    const isAllInShort = capped === p.betThisStreet + p.chips; // 筹码不够标准最小加注额时，允许"短全下"
+    if (!isFullRaise && !isAllInShort) {
+      return { error: `加注至少要到 ${minRequired}（最小加注额度 ${room.minRaise || room.bigBlind}）` };
+    }
     p.chips -= need; p.betThisStreet += need; p.totalContrib += need; room.pot += need;
     if (p.chips === 0) p.allIn = true;
+    p.lastAction = p.allIn ? 'allin' : 'raise';
+    pushLog(room, `${p.name} 加注到 ${capped}${p.allIn ? '（全下）' : ''}`);
     const isRaise = capped > room.currentBet;
     if (isRaise) {
+      if (isFullRaise) room.minRaise = capped - room.currentBet; // 短全下不刷新最小加注标准
       room.currentBet = capped;
       room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
     } else {
@@ -155,7 +189,11 @@ function applyAction(room, playerId, action, amount) {
     const need = p.chips;
     if (need <= 0) return { error: '没有可用筹码' };
     p.chips = 0; p.betThisStreet += need; p.totalContrib += need; room.pot += need; p.allIn = true;
+    p.lastAction = 'allin';
+    pushLog(room, `${p.name} 全下 ${toAmount}`);
     if (toAmount > room.currentBet) {
+      const minRequired = room.currentBet + (room.minRaise || room.bigBlind);
+      if (toAmount >= minRequired) room.minRaise = toAmount - room.currentBet; // 全下够标准最小加注额，才刷新标准
       room.currentBet = toAmount;
       room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
     } else {
@@ -175,6 +213,7 @@ function serializeForViewer(room, viewerId) {
     stage: room.stage,
     pot: room.pot,
     currentBet: room.currentBet,
+    minRaise: room.minRaise || room.bigBlind,
     community: room.community || [],
     handNumber: room.handNumber || 0,
     dealerIdx: room.dealerIdx,
@@ -187,6 +226,8 @@ function serializeForViewer(room, viewerId) {
     turnDeadline: room.turnDeadline || null,
     nextHandDeadline: room.nextHandDeadline || null,
     gameType: room.gameType || 'holdem',
+    minBuyIn: room.minBuyIn || Math.round(room.startingChips * 0.2),
+    log: (room.log || []).slice(0, 10),
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
@@ -198,8 +239,10 @@ function serializeForViewer(room, viewerId) {
         folded: p.folded,
         allIn: p.allIn,
         betThisStreet: p.betThisStreet,
+        lastAction: p.lastAction || null,
         connected: !!p.connected,
         hasAccount: !!p.accountUsername,
+        needsRebuy: !!p.needsRebuy,
         seated,
         hasCards: !!(p.cards && p.cards.length),
         cards: revealCards ? (p.cards || []) : [],
@@ -210,5 +253,4 @@ function serializeForViewer(room, viewerId) {
   };
 }
 
-module.exports = { dealHand, applyAction, serializeForViewer };
 module.exports = { dealHand, applyAction, serializeForViewer };
