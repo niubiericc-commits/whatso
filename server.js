@@ -4,8 +4,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { dealHand, applyAction, serializeForViewer } = require('./game/engine');
+const botModule = require('./game/bot');
 const accounts = require('./accounts');
 const createTournamentModule = require('./tournament');
+
+const BOT_THINK_MIN_MS = 1200;
+const BOT_THINK_MAX_MS = 3200;
 
 // 全局兜底：任何一处没被捕获的异常/Promise 拒绝，只记日志，不让整个进程崩掉重启
 // （Node 较新版本默认会在未捕获的 Promise 异常时直接终止进程，这里改成继续运行）
@@ -308,6 +312,32 @@ function scheduleTurnTimer(room) {
     return;
   }
   const player = room.players[room.turn];
+
+  // 机器人：走独立的"思考时间"，跟真人思考时间/托管机制分开
+  if (player && player.isBot) {
+    if (room._scheduledTurn === room.turn && room.turnTimer) return;
+    clearTimeout(room.turnTimer);
+    room._scheduledTurn = room.turn;
+    room.turnDeadline = null;
+    const turnIdxAtSchedule = room.turn;
+    const thinkMs = BOT_THINK_MIN_MS + Math.random() * (BOT_THINK_MAX_MS - BOT_THINK_MIN_MS);
+    room.turnTimer = setTimeout(() => {
+      room.turnTimer = null;
+      if (room.turn !== turnIdxAtSchedule) return;
+      const p = room.players[turnIdxAtSchedule];
+      if (!p) return;
+      try {
+        const decision = botModule.decideBotAction(room, p);
+        applyAction(room, p.id, decision.action, decision.amount);
+      } catch (e) {
+        console.error('机器人决策出错，改为弃牌:', e.message);
+        applyAction(room, p.id, 'fold', null);
+      }
+      broadcastRoom(room);
+    }, thinkMs);
+    return;
+  }
+
   const isAway = !player || !player.connected;
   const limitMs = isAway ? AUTO_PILOT_DELAY_MS : (room.turnTimeLimit ? room.turnTimeLimit * 1000 : 0);
   if (!limitMs) {
@@ -387,7 +417,7 @@ async function handleMessage(ws, msg) {
     case 'register': {
       const r = await accounts.register(msg.username, msg.password);
       if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
-      send(ws, { type: 'account', username: r.username, points: r.points, clubPoints: r.clubPoints, accountToken: r.accountToken });
+      send(ws, { type: 'account', username: r.username, points: r.points, clubPoints: r.clubPoints, accountToken: r.accountToken, isNewAccount: true });
       break;
     }
     case 'login': {
@@ -461,6 +491,19 @@ async function handleMessage(ws, msg) {
         handNumber: 0
       };
       rooms.set(roomId, room);
+      const botCount = Math.min(8, Math.max(0, parseInt(msg.botCount, 10) || 0));
+      if (botCount > 0) {
+        const usedNames = new Set();
+        for (let i = 0; i < botCount; i++) {
+          const bName = botModule.randomBotName(usedNames);
+          usedNames.add(bName);
+          room.players.push({
+            id: randomId(8), name: bName, token: null, accountUsername: null, isBot: true,
+            chips: botModule.randomBotStack(), cards: [], folded: false, allIn: false,
+            betThisStreet: 0, totalContrib: 0, ws: null, connected: true
+          });
+        }
+      }
       ws.roomId = roomId; ws.isHost = true;
       send(ws, { type: 'host_created', roomId, hostToken });
       broadcastRoom(room);
