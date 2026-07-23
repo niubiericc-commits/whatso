@@ -152,8 +152,8 @@
   }
 
   // ==================== 房主：创建牌局 ====================
-  function createRoom(name, sb, bb, chips, timer){
-    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer}));
+  function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers){
+    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers}));
   }
   function doResetHost(){
     localStorage.removeItem('poker_host_roomId');
@@ -168,15 +168,22 @@
       return `
         <div class="card">
           <h2 class="section-title">创建新牌局</h2>
-          <p class="section-sub">生成房间码后，把码和加入地址发给朋友，让他们在自己手机上打开加入。</p>
+          <p class="section-sub">生成房间码后，把码和加入地址发给朋友，让他们在自己手机上打开加入；如果勾选"公开"，玩家也能在自己的大厅页面里直接找到这桌，不用等你发链接。</p>
           <div class="field"><label>牌局名称</label><input type="text" id="rName" value="朋友局"></div>
           <div class="field"><label>起始筹码</label><input type="number" id="rChips" value="1000" min="20"></div>
           <div class="field" style="display:flex;gap:12px;">
             <div style="flex:1"><label>小盲注</label><input type="number" id="rSB" value="5" min="1"></div>
             <div style="flex:1"><label>大盲注</label><input type="number" id="rBB" value="10" min="2"></div>
           </div>
-          <div class="field"><label>每人思考时间（秒，0 = 不限时）</label><input type="number" id="rTimer" value="30" min="0"></div>
-          <div class="btn-row"><button class="btn btn-primary" id="createBtn">创建</button></div>
+          <div class="field" style="display:flex;gap:12px;">
+            <div style="flex:1"><label>每人思考时间（秒，0 = 不限时）</label><input type="number" id="rTimer" value="30" min="0"></div>
+            <div style="flex:1"><label>最大人数</label><input type="number" id="rMaxPlayers" value="9" min="2" max="9"></div>
+          </div>
+          <div class="setting-row">
+            <div><div>公开这桌</div><div class="section-sub" style="margin:0;">玩家在大厅页面能直接看到并坐下，不需要房间码/链接</div></div>
+            <label class="switch"><input type="checkbox" id="rPublic" checked><span></span></label>
+          </div>
+          <div class="btn-row" style="margin-top:14px;"><button class="btn btn-primary" id="createBtn">创建</button></div>
         </div>`;
     }
 
@@ -308,7 +315,9 @@
       const sb = Math.max(1, parseInt(document.getElementById('rSB').value,10)||5);
       const bb = Math.max(sb+1, parseInt(document.getElementById('rBB').value,10)||10);
       const timer = Math.max(0, parseInt(document.getElementById('rTimer').value,10)||0);
-      createRoom(name, sb, bb, chips, timer);
+      const maxPlayers = Math.min(9, Math.max(2, parseInt(document.getElementById('rMaxPlayers').value,10)||9));
+      const isPublic = document.getElementById('rPublic').checked;
+      createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers);
     };
     const resetBtn = document.getElementById('resetBtn');
     if(resetBtn) resetBtn.onclick = doResetHost;
