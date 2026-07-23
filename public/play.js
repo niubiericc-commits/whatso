@@ -69,6 +69,7 @@
   let accountPoints = null;
   let accountClubPoints = null;
   let viewMode = 'join';    // 'join' | 'tournaments' | 'profile'
+  let publicTablesLoaded = false;
   let tournamentList = [];
   let lobbyCategory = 'holdem'; // 'holdem' | 'omaha' | 'free'
   let pendingTournamentId = localStorage.getItem('pokergo_pending_tournament') || null;
@@ -283,6 +284,45 @@
     }catch(e){ lastError = e.message; profileBusy = false; render(); }
   }
 
+  // ---------------- 大厅：公开现金桌列表，不需要房间码就能直接坐下 ----------------
+  let publicTables = [];
+  async function refreshPublicTables(){
+    try{ const r = await apiGet('/api/tables', false); publicTables = r.tables; lastError = null; }
+    catch(e){ /* 静默失败，不打扰 */ }
+    render();
+  }
+  function joinPublicTable(tableId){
+    if(account){ joinRoom(tableId, null); }
+    else {
+      const name = prompt('输入你的名字（访客加入）：');
+      if(!name) return;
+      joinRoom(tableId, name.trim());
+    }
+  }
+
+  // 常驻顶部导航：登录界面之外的三大板块之间可以直接切换，不用先"返回"
+  function renderTopNav(active){
+    const tabs = [
+      { id:'join', icon:'🏠', label:'大厅' },
+      { id:'tournaments', icon:'🏆', label:'锦标赛' },
+      { id:'profile', icon:'👤', label:'我的' }
+    ];
+    return `<div class="sub-tabs" style="margin-bottom:14px;">
+      ${tabs.map(tb=>`<button class="${active===tb.id?'active':''}" data-nav="${tb.id}">${tb.icon} ${tb.label}</button>`).join('')}
+    </div>`;
+  }
+  function bindTopNav(){
+    document.querySelectorAll('[data-nav]').forEach(b=>{
+      b.onclick = () => {
+        const target = b.dataset.nav;
+        if(target === 'profile'){ openProfile(); return; }
+        if(target === 'tournaments'){ viewMode='tournaments'; fetchTournamentList(); return; }
+        if(target === 'join'){ viewMode='join'; refreshPublicTables(); }
+        render();
+      };
+    });
+  }
+
   // ---------------- 新赛事通知订阅：定期轮询 + 浏览器原生通知，不需要任何推送服务 ----------------
   let notifyTimer = null;
   let knownTournamentIds = null;
@@ -412,10 +452,10 @@
           </div>`).join('') || '<p class="section-sub">这个分类下目前没有赛事</p>';
 
         app.innerHTML = `
+          ${renderTopNav('tournaments')}
           ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
           <div class="card">
-            <p class="section-sub">${account ? '俱乐部积分：<strong style="color:var(--gold-bright);">'+accountClubPoints+'</strong>' : '登录账号后才能报名，请先返回登录'}</p>
-            <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="backToJoinBtn">← 返回</button></div>
+            <p class="section-sub">${account ? '俱乐部积分：<strong style="color:var(--gold-bright);">'+accountClubPoints+'</strong>' : '登录账号后才能报名，请先去"我的"登录'}</p>
           </div>
           <div class="sub-tabs">
             <button class="${lobbyCategory==='holdem'?'active':''}" data-lobbycat="holdem">Hold'em (${counts.holdem})</button>
@@ -424,7 +464,7 @@
           </div>
           ${rows}
         `;
-        document.getElementById('backToJoinBtn').onclick = () => { viewMode='join'; render(); };
+        bindTopNav();
         document.querySelectorAll('[data-lobbycat]').forEach(b=>{
           b.onclick = () => { lobbyCategory = b.dataset.lobbycat; render(); };
         });
@@ -618,14 +658,12 @@
         }
 
         app.innerHTML = `
+          ${renderTopNav('profile')}
           ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
-          <div class="card">
-            <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="backToJoinBtn2">← 返回</button></div>
-          </div>
           ${tabsHtml}
           ${tabBody}
         `;
-        document.getElementById('backToJoinBtn2').onclick = () => { viewMode='join'; render(); };
+        bindTopNav();
         document.querySelectorAll('[data-ptab]').forEach(b=>{
           b.onclick = () => {
             profileTab = b.dataset.ptab;
@@ -675,18 +713,13 @@
 
       const accountBlock = account ? `
         <div class="card">
-          <h2 class="section-title" style="font-size:20px;">${t('logged_in')}</h2>
-          <p class="section-sub">账号：<strong style="color:var(--cream);">${esc(account.username)}</strong>　筹码积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
-          <p class="section-sub">加入房间时会自动带上这个身份和积分作为筹码，掉线时会自动进入托管（能过牌就过牌，否则弃牌），重新连上就恢复正常。</p>
-          <div class="btn-row">
-            <button class="btn btn-ghost btn-sm auto" id="viewProfileBtn">${t('profile_btn')}</button>
-            <button class="btn btn-ghost btn-sm auto" id="viewTournamentsBtn">${t('tournaments_btn')}</button>
-            <button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button>
-          </div>
+          <h2 class="section-title" style="font-size:20px;">${esc(account.username)}</h2>
+          <p class="section-sub">筹码积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
+          <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button></div>
         </div>` : `
         <div class="card">
           <h2 class="section-title" style="font-size:20px;">${t('account_login')}</h2>
-          <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份加入，但积分不会保留，也无法参加锦标赛。</p>
+          <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份坐下，但积分不会保留，也无法参加锦标赛。</p>
           <div class="field"><label>${t('username')}</label><input type="text" id="authUser" maxlength="20"></div>
           <div class="field"><label>${t('password')}</label><input type="password" id="authPass" maxlength="40"></div>
           <div class="btn-row">
@@ -695,17 +728,35 @@
           </div>
         </div>`;
 
+      if(!publicTablesLoaded){ publicTablesLoaded = true; refreshPublicTables(); }
+      const tableRows = publicTables.map(tb => `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div>
+              <h3 style="font-family:var(--font-display);font-size:19px;margin:0 0 4px;color:var(--gold-bright);">${esc(tb.name)}</h3>
+              <p class="section-sub" style="margin:0;">盲注 ${tb.smallBlind}/${tb.bigBlind} · 起始筹码 ${tb.startingChips} · 在座 ${tb.playerCount}/${tb.maxPlayers}</p>
+            </div>
+            <button class="btn btn-primary btn-sm auto" data-jointable="${tb.id}" ${tb.playerCount>=tb.maxPlayers?'disabled':''}>${tb.playerCount>=tb.maxPlayers?'已满':'坐下'}</button>
+          </div>
+        </div>`).join('') || '<div class="card"><p class="section-sub">目前没有公开的现金桌，创建一桌并勾选"公开"就会出现在这里，或者用房间码加入私密桌。</p></div>';
+
       app.innerHTML = `
+        ${renderTopNav('join')}
         ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
         ${accountBlock}
+        <h2 class="section-title" style="font-size:20px;margin:0 0 10px;">🃏 现金桌</h2>
+        ${tableRows}
         <div class="card">
-          <h2 class="section-title">${t('join_room')}</h2>
-          <p class="section-sub">向房主索要 6 位房间码即可加入。你的手机屏幕只会显示你自己的底牌。</p>
+          <h2 class="section-title" style="font-size:16px;margin:0 0 6px;">用房间码加入私密桌</h2>
           <div class="field"><label>${t('room_code')}</label><input type="text" id="roomInput" value="${esc(lastRoom)}" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:20px;"></div>
-          ${account ? `<p class="section-sub">将以账号 <strong style="color:var(--cream);">${esc(account.username)}</strong> 身份加入</p>` : `<div class="field"><label>${t('your_name_guest')}</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
-          <div class="btn-row"><button class="btn btn-primary" id="joinBtn">${t('join_btn')}</button></div>
+          ${account ? '' : `<div class="field"><label>${t('your_name_guest')}</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
+          <div class="btn-row"><button class="btn btn-ghost" id="joinBtn">${t('join_btn')}</button></div>
         </div>`;
 
+      bindTopNav();
+      document.querySelectorAll('[data-jointable]').forEach(b=>{
+        b.onclick = () => joinPublicTable(b.dataset.jointable);
+      });
       document.getElementById('joinBtn').onclick = () => {
         const rid = document.getElementById('roomInput').value.trim().toUpperCase();
         if(!rid){ alert('请输入房间码'); return; }
@@ -733,10 +784,6 @@
       };
       const logoutBtn = document.getElementById('logoutBtn');
       if(logoutBtn) logoutBtn.onclick = logout;
-      const viewTournamentsBtn = document.getElementById('viewTournamentsBtn');
-      if(viewTournamentsBtn) viewTournamentsBtn.onclick = () => { viewMode='tournaments'; fetchTournamentList(); render(); };
-      const viewProfileBtn = document.getElementById('viewProfileBtn');
-      if(viewProfileBtn) viewProfileBtn.onclick = openProfile;
       return;
     }
 
