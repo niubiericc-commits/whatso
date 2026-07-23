@@ -15,6 +15,12 @@
   let reconnectTimer = null;
   let account = null;       // {username, accountToken}
   let accountPoints = null;
+  let accountClubPoints = null;
+  let viewMode = 'join';    // 'join' | 'tournaments'
+  let tournamentList = [];
+  let pendingTournamentId = localStorage.getItem('pokergo_pending_tournament') || null;
+  let tournamentEndInfo = null; // {eliminated:true, rank} 或 {results}
+  let tournamentPollTimer = null;
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cardHtml(c){
@@ -89,8 +95,34 @@
       } else if(msg.type === 'account'){
         account = { username: msg.username, accountToken: msg.accountToken };
         accountPoints = msg.points;
+        accountClubPoints = msg.clubPoints;
         localStorage.setItem('pokergo_account', JSON.stringify(account));
         lastError = null; render();
+      } else if(msg.type === 'tournament_list'){
+        tournamentList = msg.tournaments; render();
+      } else if(msg.type === 'tournament_registered'){
+        accountClubPoints = msg.clubPoints;
+        pendingTournamentId = msg.tournamentId;
+        localStorage.setItem('pokergo_pending_tournament', pendingTournamentId);
+        lastError = null; render();
+      } else if(msg.type === 'tournament_waiting'){
+        pendingTournamentId = msg.tournamentId;
+        localStorage.setItem('pokergo_pending_tournament', pendingTournamentId);
+        render();
+      } else if(msg.type === 'tournament_assigned'){
+        localStorage.removeItem('pokergo_pending_tournament');
+        pendingTournamentId = null;
+        connect(()=> send({type:'rejoin', roomId: msg.roomId, playerToken: msg.playerToken}));
+      } else if(msg.type === 'tournament_eliminated'){
+        localStorage.removeItem('pokergo_pending_tournament');
+        pendingTournamentId = null;
+        tournamentEndInfo = { eliminated: true, rank: msg.rank };
+        render();
+      } else if(msg.type === 'tournament_finished'){
+        localStorage.removeItem('pokergo_pending_tournament');
+        pendingTournamentId = null;
+        tournamentEndInfo = { results: msg.results };
+        render();
       } else if(msg.type === 'error'){
         lastError = msg.message; render();
       }
@@ -114,10 +146,28 @@
   }
 
   function logout(){
-    account = null; accountPoints = null;
+    account = null; accountPoints = null; accountClubPoints = null;
     localStorage.removeItem('pokergo_account');
     render();
   }
+
+  function fetchTournamentList(){
+    connect(()=> send({type:'tournament_list'}));
+  }
+
+  function registerForTournament(tournamentId){
+    if(!account){ alert('请先登录账号再报名'); return; }
+    send({type:'tournament_register', tournamentId, accountToken: account.accountToken});
+  }
+
+  function startTournamentPolling(){
+    stopTournamentPolling();
+    tournamentPollTimer = setInterval(()=>{
+      if(!pendingTournamentId || !account) return;
+      send({type:'tournament_check_assignment', tournamentId: pendingTournamentId, accountToken: account.accountToken});
+    }, 3000);
+  }
+  function stopTournamentPolling(){ clearInterval(tournamentPollTimer); tournamentPollTimer = null; }
 
   function joinRoom(rid, name){
     lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
@@ -138,18 +188,88 @@
     const app = document.getElementById('app');
 
     if(!roomId || !playerId){
+      // 分支1：赛事已经结束或本人已被淘汰，展示结果
+      if(tournamentEndInfo){
+        stopTournamentPolling();
+        if(tournamentEndInfo.eliminated){
+          app.innerHTML = `
+            <div class="card">
+              <h2 class="section-title">已出局</h2>
+              <p class="section-sub">你在本场赛事中获得第 ${tournamentEndInfo.rank} 名。感谢参赛！</p>
+              <div class="btn-row"><button class="btn btn-primary auto" id="backBtn">返回</button></div>
+            </div>`;
+        } else {
+          const r = tournamentEndInfo.results || {};
+          const rows = [1,2,3].map(rank => r[rank] ? `<div class="showdown-row"><span>${rank===1?'🥇 冠军':rank===2?'🥈 亚军':'🥉 季军'} ${esc(r[rank].username)}</span><span>${esc(r[rank].prize)}</span></div>` : '').join('');
+          app.innerHTML = `
+            <div class="card">
+              <h2 class="section-title">🏆 赛事结束</h2>
+              ${rows}
+              <div class="btn-row" style="margin-top:12px;"><button class="btn btn-primary auto" id="backBtn">返回</button></div>
+            </div>`;
+        }
+        document.getElementById('backBtn').onclick = () => { tournamentEndInfo = null; viewMode='join'; render(); };
+        return;
+      }
+
+      // 分支2：已报名，正在等待管理员开赛 / 等待系统给自己分桌
+      if(pendingTournamentId){
+        startTournamentPolling();
+        app.innerHTML = `
+          <div class="card">
+            <h2 class="section-title">已报名</h2>
+            <div class="waiting-box">
+              <div class="big">🎟️</div>
+              等待管理员开赛，开赛后会自动带你进入分到的牌桌…
+            </div>
+            <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="cancelWaitBtn">取消等待（不退票）</button></div>
+          </div>`;
+        document.getElementById('cancelWaitBtn').onclick = () => { stopTournamentPolling(); pendingTournamentId=null; localStorage.removeItem('pokergo_pending_tournament'); render(); };
+        return;
+      }
+
+      // 分支3：锦标赛列表
+      if(viewMode === 'tournaments'){
+        const rows = tournamentList.map(t => `
+          <div class="card">
+            <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)}</h3>
+            <p class="section-sub" style="margin:0 0 8px;">${t.status==='registering'?'报名中':t.status==='running'?'进行中':'已结束'} · 门票 ${t.ticketPrice} 俱乐部积分 · 已报名 ${t.registeredCount} 人</p>
+            <p class="section-sub" style="margin:0 0 10px;">🥇 ${esc(t.prizes[1])}　🥈 ${esc(t.prizes[2])}　🥉 ${esc(t.prizes[3])}</p>
+            ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-reg="${t.id}">花 ${t.ticketPrice} 积分报名</button>` : ''}
+            ${t.status==='finished' && t.results ? `<div class="hint-box">${[1,2,3].map(r=>t.results[r]?(r===1?'🥇':r===2?'🥈':'🥉')+esc(t.results[r].username):'').filter(Boolean).join('　')}</div>` : ''}
+          </div>`).join('') || '<p class="section-sub">目前没有正在报名的赛事</p>';
+
+        app.innerHTML = `
+          ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
+          <div class="card">
+            <p class="section-sub">${account ? '俱乐部积分：<strong style="color:var(--gold-bright);">'+accountClubPoints+'</strong>' : '登录账号后才能报名，请先返回登录'}</p>
+            <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="backToJoinBtn">← 返回</button></div>
+          </div>
+          ${rows}
+        `;
+        document.getElementById('backToJoinBtn').onclick = () => { viewMode='join'; render(); };
+        document.querySelectorAll('[data-reg]').forEach(b=>{
+          b.onclick = () => registerForTournament(b.dataset.reg);
+        });
+        return;
+      }
+
+      // 分支4：默认——房间码加入 / 账号登录
       const lastRoom = prefillRoom || localStorage.getItem('poker_last_room') || '';
 
       const accountBlock = account ? `
         <div class="card">
           <h2 class="section-title" style="font-size:20px;">已登录</h2>
-          <p class="section-sub">账号：<strong style="color:var(--cream);">${esc(account.username)}</strong>　积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong></p>
+          <p class="section-sub">账号：<strong style="color:var(--cream);">${esc(account.username)}</strong>　筹码积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
           <p class="section-sub">加入房间时会自动带上这个身份和积分作为筹码，掉线时会自动进入托管（能过牌就过牌，否则弃牌），重新连上就恢复正常。</p>
-          <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="logoutBtn">退出登录</button></div>
+          <div class="btn-row">
+            <button class="btn btn-ghost btn-sm auto" id="viewTournamentsBtn">🏆 查看锦标赛</button>
+            <button class="btn btn-ghost btn-sm auto" id="logoutBtn">退出登录</button>
+          </div>
         </div>` : `
         <div class="card">
           <h2 class="section-title" style="font-size:20px;">账号登录（可选）</h2>
-          <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份加入，但积分不会保留。</p>
+          <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份加入，但积分不会保留，也无法参加锦标赛。</p>
           <div class="field"><label>用户名</label><input type="text" id="authUser" maxlength="20"></div>
           <div class="field"><label>密码</label><input type="password" id="authPass" maxlength="40"></div>
           <div class="btn-row">
@@ -196,6 +316,8 @@
       };
       const logoutBtn = document.getElementById('logoutBtn');
       if(logoutBtn) logoutBtn.onclick = logout;
+      const viewTournamentsBtn = document.getElementById('viewTournamentsBtn');
+      if(viewTournamentsBtn) viewTournamentsBtn.onclick = () => { viewMode='tournaments'; fetchTournamentList(); render(); };
       return;
     }
 
