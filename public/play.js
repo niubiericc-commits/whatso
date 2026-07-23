@@ -51,6 +51,7 @@
   }
   let lastTurnWasMine = false;
   let lastSoundedShowdownHand = null;
+  let lastAnimatedShowdownHand = null;
   let toastMsg = null;
   let toastTimer = null;
   function showToast(msg){
@@ -83,6 +84,7 @@
   let accountClubPoints = null;
   let viewMode = 'join';    // 'join' | 'tournaments' | 'profile'
   let publicTablesLoaded = false;
+  let buyInPrompt = null; // { rid, tableName, gameType, minBuyIn, suggested } 或 null
   let tournamentList = [];
   let lobbyCategory = 'holdem'; // 'holdem' | 'omaha' | 'free'
   let pendingTournamentId = localStorage.getItem('pokergo_pending_tournament') || null;
@@ -103,7 +105,7 @@
   function cardHtml(c){
     const red = (c.s==='h'||c.s==='d');
     const label = RANK_LABEL[c.r] || c.r;
-    return `<div class="pcard ${red?'red':'black'}"><span class="r">${label}</span><span class="s">${SUIT_SYMBOL[c.s]}</span></div>`;
+    return `<div class="pcard ${red?'red':'black'}"><span class="corner">${label}${SUIT_SYMBOL[c.s]}</span><span class="r">${label}</span><span class="s">${SUIT_SYMBOL[c.s]}</span></div>`;
   }
   function storageKey(rid){ return 'poker_player_' + rid; }
   function remainingSeconds(deadline){ return deadline ? Math.max(0, Math.ceil((deadline - Date.now())/1000)) : null; }
@@ -321,8 +323,17 @@
     render();
   }
   function joinPublicTable(tableId){
-    if(account){ joinRoom(tableId, null); }
-    else {
+    if(account){
+      const tb = publicTables.find(t=>t.id===tableId);
+      buyInPrompt = {
+        rid: tableId,
+        tableName: tb?tb.name:'',
+        gameType: tb?tb.gameType:'holdem',
+        minBuyIn: tb?tb.minBuyIn:200,
+        suggested: tb?tb.startingChips:200
+      };
+      render();
+    } else {
       const name = prompt('输入你的名字（访客加入）：');
       if(!name) return;
       joinRoom(tableId, name.trim());
@@ -404,7 +415,7 @@
   }
   function stopTournamentPolling(){ clearInterval(tournamentPollTimer); tournamentPollTimer = null; }
 
-  function joinRoom(rid, name){
+  function joinRoom(rid, name, buyIn){
     lastState = null; lastError = null; playerId = null; // 清空上一个房间残留的状态
     const saved = localStorage.getItem(storageKey(rid));
     connect(()=>{
@@ -412,7 +423,7 @@
         const s = JSON.parse(saved);
         send({type:'rejoin', roomId: rid, playerToken: s.playerToken});
       } else if(account){
-        send({type:'join', roomId: rid, accountToken: account.accountToken});
+        send({type:'join', roomId: rid, accountToken: account.accountToken, buyIn});
       } else {
         send({type:'join', roomId: rid, name});
       }
@@ -451,7 +462,45 @@
     }
 
     if(!roomId || !playerId){
-      // 分支1：赛事已经结束或本人已被淘汰，展示结果
+      // 分支0：买入弹窗——账号玩家坐现金桌前，先选买入多少积分
+      if(buyInPrompt){
+        const bp = buyInPrompt;
+        app.innerHTML = `
+          <div class="card">
+            <h2 class="section-title">买入 ${esc(bp.tableName||'')}</h2>
+            <p class="section-sub">${bp.gameType==='omaha'?'🂡 Omaha':"🂡 Hold'em"} · 你的积分余额：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
+            <div class="field">
+              <label>买入积分（最低 ${bp.minBuyIn}）</label>
+              <input type="number" id="buyInAmount" value="${Math.min(accountClubPoints, Math.max(bp.minBuyIn, bp.suggested||bp.minBuyIn))}" min="${bp.minBuyIn}" max="${accountClubPoints}">
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-ghost btn-sm auto" data-buyinfrac="0.5">半仓</button>
+              <button class="btn btn-ghost btn-sm auto" data-buyinfrac="1">全部买入</button>
+            </div>
+            <div class="btn-row" style="margin-top:14px;">
+              <button class="btn btn-ghost auto" id="cancelBuyInBtn">取消</button>
+              <button class="btn btn-primary auto" id="confirmBuyInBtn">买入并坐下</button>
+            </div>
+          </div>`;
+        document.querySelectorAll('[data-buyinfrac]').forEach(b=>{
+          b.onclick = () => {
+            const frac = parseFloat(b.dataset.buyinfrac);
+            const el = document.getElementById('buyInAmount');
+            el.value = Math.max(bp.minBuyIn, Math.floor(accountClubPoints*frac));
+          };
+        });
+        document.getElementById('cancelBuyInBtn').onclick = () => { buyInPrompt=null; render(); };
+        document.getElementById('confirmBuyInBtn').onclick = () => {
+          const amt = parseInt(document.getElementById('buyInAmount').value,10);
+          if(!amt || amt < bp.minBuyIn){ alert('买入至少需要 '+bp.minBuyIn+' 积分'); return; }
+          if(amt > accountClubPoints){ alert('积分余额不足'); return; }
+          const rid = bp.rid; buyInPrompt = null;
+          joinRoom(rid, null, amt);
+        };
+        return;
+      }
+
+
       if(tournamentEndInfo){
         stopTournamentPolling();
         if(tournamentEndInfo.eliminated){
@@ -841,7 +890,8 @@
         const rid = document.getElementById('roomInput').value.trim().toUpperCase();
         if(!rid){ alert('请输入房间码'); return; }
         if(account){
-          joinRoom(rid, null);
+          buyInPrompt = { rid, tableName: '房间 '+rid, gameType:'holdem', minBuyIn: 200, suggested: 200 };
+          render();
         } else {
           const name = document.getElementById('nameInput').value.trim();
           if(!name){ alert('请输入姓名'); return; }
@@ -876,6 +926,31 @@
     const me = st.players.find(p=>p.id===playerId);
     const errHtml = lastError ? `<div class="err-box">${esc(lastError)}</div>` : '';
 
+    // 筹码打光了：优先显示补码弹窗（现金桌才有，锦标赛桌走淘汰逻辑不会有这个标记）
+    if(me && me.needsRebuy && account){
+      const suggested = Math.max(st.minBuyIn||200, Math.min(accountClubPoints, (st.minBuyIn||200)*3));
+      app.innerHTML = `
+        ${errHtml}
+        <div class="card">
+          <h2 class="section-title">💸 筹码打光了</h2>
+          <p class="section-sub">你的积分余额：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong>　最低补码 ${st.minBuyIn}</p>
+          <div class="field"><label>补码金额</label><input type="number" id="rebuyAmount" value="${suggested}" min="${st.minBuyIn}" max="${accountClubPoints}"></div>
+          <div class="btn-row">
+            <button class="btn btn-ghost auto" id="rebuyLeaveBtn">不玩了，离开牌桌</button>
+            <button class="btn btn-primary auto" id="rebuyConfirmBtn">补码继续</button>
+          </div>
+        </div>`;
+      document.getElementById('rebuyLeaveBtn').onclick = () => { if(confirm('确定离开吗？')) send({type:'leave_table'}); };
+      document.getElementById('rebuyConfirmBtn').onclick = () => {
+        const amt = parseInt(document.getElementById('rebuyAmount').value,10);
+        if(!amt || amt < st.minBuyIn){ alert('补码至少需要 '+st.minBuyIn+' 积分'); return; }
+        if(amt > accountClubPoints){ alert('积分余额不足'); return; }
+        soundAction();
+        send({type:'rebuy', amount: amt});
+      };
+      return;
+    }
+
     if(st.stage==='lobby'){
       app.innerHTML = `
         ${errHtml}
@@ -900,19 +975,27 @@
     const startIdx = meIdx>=0 ? meIdx : 0;
     const rx=44, ry=41; // 半径相对整个牌桌外框（不是绒布内框），让座位落在深色轨道上，不叠在绿色绒布上
     const winnerNames = st.stage==='showdown' ? new Set((st.results||[]).flatMap(r=>r.winners)) : new Set();
+    const winnerAmounts = {};
+    if(st.stage==='showdown'){
+      (st.results||[]).forEach(r=>{ r.winners.forEach(wn=>{ winnerAmounts[wn] = (winnerAmounts[wn]||0) + Math.floor(r.amount/r.winners.length); }); });
+    }
+    const seatPositions = {};
     const seatsHtml = st.players.map((p,orig)=>{
       if(!p.seated && st.stage!=='showdown') return '';
       const k = (orig - startIdx + n) % n;
       const angle = Math.PI/2 + (k/n)*2*Math.PI;
       const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
+      seatPositions[p.name] = {left, top};
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
       const isWinner = winnerNames.has(p.name);
-      const winBurstHtml = (isWinner && p.cards && p.cards.length) ? `
+      const winBurstHtml = isWinner ? `
         <div class="win-burst">
-          <div class="win-cards">${p.cards.map(c=>cardHtml(c)).join('')}</div>
+          ${p.cards && p.cards.length ? `<div class="win-cards">${p.cards.map(c=>cardHtml(c)).join('')}</div>` : ''}
           <div class="win-label">WIN</div>
-        </div>` : '';
+          ${p.handName ? `<div class="win-handname">${esc(p.handName)}</div>` : ''}
+        </div>
+        <div class="win-amount-pop">+${winnerAmounts[p.name]||0}</div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
         ${winBurstHtml}
         <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
@@ -996,6 +1079,7 @@
             <button class="btn btn-ghost btn-sm auto" data-frac="0.75">${t('three_q_pot')}</button>
             <button class="btn btn-ghost btn-sm auto" data-frac="1">${t('full_pot')}</button>
           </div>` : '';
+        const maxRaiseTo = me.betThisStreet + me.chips;
         bottom = `
           <div class="action-row">
             <button class="btn btn-danger" id="foldBtn">${t('action_fold')}</button>
@@ -1003,6 +1087,9 @@
             <button class="btn btn-ghost" id="allinBtn">${t('action_allin')} (${me.chips})</button>
           </div>
           ${quickRaiseHtml}
+          <div class="bet-slider-row">
+            <input type="range" id="raiseSlider" min="${minRaiseTo}" max="${Math.max(minRaiseTo,maxRaiseTo)}" value="${minRaiseTo}" step="1">
+          </div>
           <div class="raise-box">
             <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${minRaiseTo}">
             <button class="btn btn-primary auto" id="raiseBtn">${t('action_raise')}</button>
@@ -1024,6 +1111,31 @@
       ${panel}
     `;
 
+    // 摊牌时，底池的筹码飞向赢家（每局只放一次）
+    if(st.stage==='showdown' && lastAnimatedShowdownHand !== st.handNumber && winnerNames.size){
+      lastAnimatedShowdownHand = st.handNumber;
+      const potWrap = document.querySelector('.poker-table-wrap');
+      if(potWrap){
+        winnerNames.forEach(wn=>{
+          const pos = seatPositions[wn];
+          if(!pos) return;
+          for(let i=0;i<3;i++){
+            const chip = document.createElement('div');
+            chip.className = 'pot-fly-chip';
+            chip.style.left = '50%'; chip.style.top = '48%'; chip.style.opacity = '0';
+            chip.style.transition = 'left .6s cubic-bezier(.3,.6,.3,1) '+(i*70)+'ms, top .6s cubic-bezier(.3,.6,.3,1) '+(i*70)+'ms, opacity .5s '+(i*70)+'ms';
+            potWrap.appendChild(chip);
+            requestAnimationFrame(()=>requestAnimationFrame(()=>{
+              chip.style.opacity = '1';
+              chip.style.left = pos.left+'%'; chip.style.top = pos.top+'%';
+            }));
+            setTimeout(()=>{ chip.style.opacity='0'; }, 550+i*70);
+            setTimeout(()=>chip.remove(), 900+i*70);
+          }
+        });
+      }
+    }
+
     const leaveTableBtn = document.getElementById('leaveTableBtn');
     if(leaveTableBtn) leaveTableBtn.onclick = () => {
       if(confirm('确定要离开这桌吗？如果正在进行一手牌，会先自动帮你弃牌。')) send({type:'leave_table'});
@@ -1032,6 +1144,7 @@
     if(foldBtn) foldBtn.onclick = () => { soundAction(); send({type:'action', action:'fold'}); };
     const callBtn = document.getElementById('callBtn');
     const raiseInputEl = document.getElementById('raiseInput');
+    const raiseSliderEl = document.getElementById('raiseSlider');
     const minRaiseToVal = st.currentBet + (st.minRaise || st.bigBlind);
     const maxRaiseToVal = me ? me.betThisStreet + me.chips : 0;
     // 输入框里一旦填了有效的加注金额，"跟注/过牌"这个按钮就变成"加注到 X"，
@@ -1046,8 +1159,14 @@
         callBtn.textContent = callBtn.dataset.defaultLabel;
         callBtn.dataset.raiseMode = '';
       }
+      if(raiseSliderEl && v){ raiseSliderEl.value = Math.min(Math.max(v,minRaiseToVal),maxRaiseToVal); }
     }
     if(raiseInputEl) raiseInputEl.oninput = syncCallBtnWithRaiseInput;
+    // 额度条拖动时，同步更新加注输入框和"跟注/加注"按钮——拖到底就是全下
+    if(raiseSliderEl) raiseSliderEl.oninput = () => {
+      if(raiseInputEl) raiseInputEl.value = raiseSliderEl.value;
+      syncCallBtnWithRaiseInput();
+    };
     if(callBtn) callBtn.onclick = () => {
       if(callBtn.dataset.raiseMode === '1'){
         const v = Math.min(parseInt(raiseInputEl.value,10), maxRaiseToVal);
@@ -1067,6 +1186,7 @@
       soundAction();
       send({type:'action', action: v>=maxRaiseToVal?'allin':'raise', amount: Math.min(v, maxRaiseToVal)});
     };
+    // 1/4、1/2、3/4、满池按钮：点了以后同步更新输入框，也把额度条自动移动过去
     document.querySelectorAll('[data-frac]').forEach(b=>{
       b.onclick = () => {
         const frac = parseFloat(b.dataset.frac);
