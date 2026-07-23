@@ -35,6 +35,10 @@ body[data-theme="midnight"]{
   --felt-dark:#0a0a16; --felt:#14142c; --felt-light:#2a2a52;
   --gold:#9a7aff; --gold-bright:#c3aeff; --gold-deep:#6a4fc4;
 }
+body[data-theme="royal"]{
+  --felt-dark:#1a0a2e; --felt:#2d1152; --felt-light:#4a1f7a;
+  --gold:#e2ab3f; --gold-bright:#ffd873; --gold-deep:#a9781f;
+}
 *{box-sizing:border-box;} html,body{margin:0;padding:0;}
 body{
   background:
@@ -179,7 +183,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .switch span::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:2.5px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
 .switch input:checked + span{background:linear-gradient(180deg, var(--gold-bright), var(--gold));border-color:var(--gold);}
 .switch input:checked + span::before{transform:translateX(20px);}
-.theme-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:10px;margin-top:12px;}
 .theme-swatch{border:2px solid var(--border);border-radius:var(--radius-sm);padding:10px 6px;cursor:pointer;text-align:center;background:var(--surface-2);}
 .theme-swatch.picked{border-color:var(--gold);}
 .theme-swatch .dot{width:28px;height:28px;border-radius:50%;margin:0 auto 6px;}
@@ -239,6 +243,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .copy-row{display:flex;gap:8px;align-items:center;}
 .copy-row input{flex:1;}
 .loading-screen{text-align:center;padding:60px 20px;color:var(--muted);font-family:var(--font-mono);font-size:12px;}
+.toast-pop{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:60;max-width:90vw;
+  background:linear-gradient(135deg, var(--surface), var(--bg-1));border:1px solid var(--gold);border-radius:999px;
+  padding:12px 22px;font-size:13px;font-weight:600;color:var(--gold-bright);box-shadow:var(--shadow-pop);
+  animation:toast-in .35s ease-out, toast-out .35s ease-in 4.1s forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(-16px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+@keyframes toast-out{from{opacity:1;}to{opacity:0;transform:translateX(-50%) translateY(-10px);}}
 
 /* ---------- poker table (只有这里保留绒布质感——真正坐上牌桌才用) ---------- */
 .table-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
@@ -305,6 +315,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .seat-bet-chip::before{content:'';width:11px;height:11px;border-radius:50%;flex:none;
   background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1px rgba(0,0,0,.4);}
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
+
+/* ---------- 摊牌获胜特效：赢家座位上方浮现放大的手牌 + WIN 字样 ---------- */
+.win-burst{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);z-index:5;text-align:center;
+  animation:win-pop .45s cubic-bezier(.2,1.6,.4,1);pointer-events:none;}
+@keyframes win-pop{from{opacity:0;transform:translateX(-50%) translateY(10px) scale(.7);}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
+.win-burst .win-cards{display:flex;gap:2px;justify-content:center;margin-bottom:2px;filter:drop-shadow(0 0 14px rgba(255,216,115,0.65));}
+.win-burst .win-cards .pcard{width:34px;height:47px;}
+.win-burst .win-cards .pcard .r{font-size:13px;} .win-burst .win-cards .pcard .s{font-size:11px;}
+.win-burst .win-label{font-family:var(--font-display);font-size:20px;letter-spacing:.12em;
+  background:linear-gradient(180deg,var(--gold-bright),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 0 18px rgba(255,216,115,0.5);}
 
 /* 玩家头像按座位序号轮换配色，视觉上更接近主流客户端的"每人一色" */
 .avatar-c0{background:linear-gradient(150deg,#3a6ea8,#1f3f63);}
