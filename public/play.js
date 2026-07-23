@@ -427,7 +427,7 @@
             <button class="btn btn-ghost btn-sm auto" data-frac="0.25">1/4 池</button>
             <button class="btn btn-ghost btn-sm auto" data-frac="0.5">1/2 池</button>
             <button class="btn btn-ghost btn-sm auto" data-frac="0.75">3/4 池</button>
-            <button class="btn btn-ghost btn-sm auto" data-frac="1">全池</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="1">满池</button>
           </div>
           <div class="raise-box">
             <input type="number" id="raiseInput" placeholder="加注到…" min="${st.currentBet+1}">
