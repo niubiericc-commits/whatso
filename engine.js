@@ -1,4 +1,4 @@
-const { newDeck, shuffle, best7, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
+const { newDeck, shuffle, best7, bestOmaha, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
 
 function nextActiveSeat(room, idx) {
   const arr = room.activeSeats;
@@ -35,7 +35,8 @@ function dealHand(room) {
   room.pot = 0; room.community = []; room.stage = 'preflop'; room.results = null;
   room.handNumber = (room.handNumber || 0) + 1;
   room.deck = shuffle(newDeck());
-  room.activeSeats.forEach(i => { room.players[i].cards = [room.deck.pop(), room.deck.pop()]; });
+  const holeCount = room.gameType === 'omaha' ? 4 : 2;
+  room.activeSeats.forEach(i => { room.players[i].cards = Array.from({ length: holeCount }, () => room.deck.pop()); });
 
   let sbIdx, bbIdx, startIdx;
   if (room.activeSeats.length === 2) {
@@ -46,6 +47,7 @@ function dealHand(room) {
   postBlind(room, sbIdx, room.smallBlind);
   postBlind(room, bbIdx, room.bigBlind);
   room.currentBet = room.bigBlind; room.sbIdx = sbIdx; room.bbIdx = bbIdx;
+  room.minRaise = room.bigBlind; // 标准规则：第一次加注的最小增量至少要等于大盲
   room.actionQueue = rotateFrom(room, startIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
   room.turn = room.actionQueue[0];
   return {};
@@ -80,6 +82,7 @@ function advanceStreet(room) {
   else if (room.stage === 'turn') { room.stage = 'river'; room.community.push(room.deck.pop()); }
   room.players.forEach(p => p.betThisStreet = 0);
   room.currentBet = 0;
+  room.minRaise = room.bigBlind; // 每条新街，起始最小加注额重新等于大盲
   room.actionQueue = rotateFrom(room, room.dealerIdx).filter(i => !room.players[i].folded && !room.players[i].allIn);
   if (room.actionQueue.length === 0) { advanceStreet(room); return; }
   room.turn = room.actionQueue[0];
@@ -87,7 +90,11 @@ function advanceStreet(room) {
 
 function runShowdown(room) {
   const alive = room.players.filter(p => !p.folded);
-  alive.forEach(p => p.handVal = best7([...p.cards, ...room.community]));
+  const isOmaha = room.gameType === 'omaha';
+  alive.forEach(p => {
+    p.handVal = isOmaha ? bestOmaha(p.cards, room.community) : best7([...p.cards, ...room.community]);
+    p.handName = p.handVal ? HAND_NAMES[p.handVal[0]] : '';
+  });
   const pots = computeSidePots(room.players);
   room.results = [];
   pots.forEach(pot => {
@@ -134,10 +141,17 @@ function applyAction(room, playerId, action, amount) {
     const capped = Math.min(toAmount, p.betThisStreet + p.chips);
     const need = capped - p.betThisStreet;
     if (need <= 0) return { error: '筹码不足' };
+    const minRequired = room.currentBet + (room.minRaise || room.bigBlind);
+    const isFullRaise = capped >= minRequired;
+    const isAllInShort = capped === p.betThisStreet + p.chips; // 筹码不够标准最小加注额时，允许"短全下"
+    if (!isFullRaise && !isAllInShort) {
+      return { error: `加注至少要到 ${minRequired}（最小加注额度 ${room.minRaise || room.bigBlind}）` };
+    }
     p.chips -= need; p.betThisStreet += need; p.totalContrib += need; room.pot += need;
     if (p.chips === 0) p.allIn = true;
     const isRaise = capped > room.currentBet;
     if (isRaise) {
+      if (isFullRaise) room.minRaise = capped - room.currentBet; // 短全下不刷新最小加注标准
       room.currentBet = capped;
       room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
     } else {
@@ -151,6 +165,8 @@ function applyAction(room, playerId, action, amount) {
     if (need <= 0) return { error: '没有可用筹码' };
     p.chips = 0; p.betThisStreet += need; p.totalContrib += need; room.pot += need; p.allIn = true;
     if (toAmount > room.currentBet) {
+      const minRequired = room.currentBet + (room.minRaise || room.bigBlind);
+      if (toAmount >= minRequired) room.minRaise = toAmount - room.currentBet; // 全下够标准最小加注额，才刷新标准
       room.currentBet = toAmount;
       room.actionQueue = rotateFrom(room, idx).filter(i => i !== idx && !room.players[i].folded && !room.players[i].allIn);
     } else {
@@ -161,6 +177,7 @@ function applyAction(room, playerId, action, amount) {
   return { error: '未知操作' };
 }
 
+// 生成发给某个观察者(某玩家自己 或 房主)的视图：绝不泄露他人底牌
 function serializeForViewer(room, viewerId) {
   return {
     type: 'state',
@@ -169,6 +186,7 @@ function serializeForViewer(room, viewerId) {
     stage: room.stage,
     pot: room.pot,
     currentBet: room.currentBet,
+    minRaise: room.minRaise || room.bigBlind,
     community: room.community || [],
     handNumber: room.handNumber || 0,
     dealerIdx: room.dealerIdx,
@@ -177,6 +195,10 @@ function serializeForViewer(room, viewerId) {
     turn: room.turn,
     smallBlind: room.smallBlind,
     bigBlind: room.bigBlind,
+    turnTimeLimit: room.turnTimeLimit || 0,
+    turnDeadline: room.turnDeadline || null,
+    nextHandDeadline: room.nextHandDeadline || null,
+    gameType: room.gameType || 'holdem',
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
@@ -189,9 +211,11 @@ function serializeForViewer(room, viewerId) {
         allIn: p.allIn,
         betThisStreet: p.betThisStreet,
         connected: !!p.connected,
+        hasAccount: !!p.accountUsername,
         seated,
         hasCards: !!(p.cards && p.cards.length),
-        cards: revealCards ? (p.cards || []) : []
+        cards: revealCards ? (p.cards || []) : [],
+        handName: (room.stage === 'showdown' && !p.folded) ? (p.handName || null) : null
       };
     }),
     results: room.results || null
