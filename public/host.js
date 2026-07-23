@@ -316,7 +316,19 @@
 
   function renderClub(){
     if(!adminToken){
-      const connHint = connStatus==='connecting' ? '<p class="section-sub">正在连接服务器…</p>' : '';
+      const connHint = connStatus==='connecting'
+        ? `<p class="section-sub">正在连接服务器…</p>
+           <p class="section-sub" id="clubTimeoutHint" style="display:none;">一直连不上？免费版服务器休眠唤醒可能要等 30 秒左右；如果等了很久还不行，点下面按钮重试。</p>
+           <div class="btn-row" id="clubTimeoutBtnRow" style="display:none;"><button class="btn btn-ghost" id="clubRetryBtn">重新尝试连接</button></div>`
+        : '';
+      setTimeout(()=>{
+        if(connStatus==='connecting'){
+          const hint = document.getElementById('clubTimeoutHint');
+          const row = document.getElementById('clubTimeoutBtnRow');
+          if(hint) hint.style.display='block';
+          if(row) row.style.display='flex';
+        }
+      }, 8000);
       return `
         <div class="card">
           <h2 class="section-title">管理员登录</h2>
@@ -402,6 +414,12 @@
       if(!pass){ alert('请输入密码'); return; }
       lastError = null;
       connect(()=> send({type:'admin_login', password: pass}));
+    };
+    const clubRetryBtn = document.getElementById('clubRetryBtn');
+    if(clubRetryBtn) clubRetryBtn.onclick = () => {
+      const pass = document.getElementById('adminPass') ? document.getElementById('adminPass').value : '';
+      lastError = null;
+      connect(()=> { if(pass) send({type:'admin_login', password: pass}); });
     };
     const logoutClubBtn = document.getElementById('logoutClubBtn');
     if(logoutClubBtn) logoutClubBtn.onclick = logoutClub;
