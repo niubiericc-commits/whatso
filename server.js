@@ -36,6 +36,7 @@ function createRoomForTable(t, bucket) {
     startingChips: t.startingChips,
     turnTimeLimit: 30, // 锦标赛桌默认给个思考时间上限，避免有人一直不操作卡住整场比赛
     tournamentId: t.id,
+    gameType: t.gameType === 'omaha' ? 'omaha' : 'holdem',
     players: bucket.map(p => ({
       id: randomId(8), name: p.username, token: randomToken(), accountUsername: p.username,
       chips: t.startingChips, cards: [], folded: false, allIn: false, betThisStreet: 0, totalContrib: 0,
@@ -96,6 +97,116 @@ app.post('/api/admin/accounts/:username/club-points', requireAdmin, async (req, 
   const r = await accounts.adjustClubPoints(req.params.username, delta);
   if (r.error) { res.status(400).json({ error: r.error }); return; }
   res.json({ username: req.params.username, clubPoints: r.clubPoints });
+});
+
+app.post('/api/admin/coupons', requireAdmin, async (req, res) => {
+  const r = await accounts.createCoupon((req.body || {}).code, parseInt((req.body || {}).amount, 10) || 0);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.post('/api/admin/promotion/announcement', requireAdmin, async (req, res) => {
+  const r = await accounts.setAnnouncement((req.body || {}).title, (req.body || {}).body);
+  res.json(r);
+});
+
+app.post('/api/admin/promotion/packages', requireAdmin, async (req, res) => {
+  const r = await accounts.addPackage(req.body || {});
+  res.json(r);
+});
+
+app.delete('/api/admin/promotion/packages/:id', requireAdmin, async (req, res) => {
+  const r = await accounts.removePackage(req.params.id);
+  res.json(r);
+});
+
+app.post('/api/admin/promotion/tiers', requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  if (!['VIP', 'SVIP'].includes(body.tier)) { res.status(400).json({ error: '等级只能是 VIP 或 SVIP' }); return; }
+  const r = await accounts.setTierInfo(body.tier, body.text);
+  res.json(r);
+});
+
+app.post('/api/admin/accounts/:username/tier', requireAdmin, async (req, res) => {
+  const r = await accounts.setMemberTier(req.params.username, (req.body || {}).tier);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.post('/api/admin/accounts/:username/recharge', requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const r = await accounts.recordSpend(req.params.username, body.amountRMB, body.note);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.get('/api/admin/levels', requireAdmin, async (req, res) => {
+  res.json({ levels: await accounts.getLevels() });
+});
+app.post('/api/admin/levels', requireAdmin, async (req, res) => {
+  const body = req.body || {};
+  const levels = await accounts.addLevel(body.level, body.threshold, body.rewardText, body.rewardClubPoints);
+  res.json({ levels });
+});
+app.delete('/api/admin/levels/:level', requireAdmin, async (req, res) => {
+  const levels = await accounts.removeLevel(req.params.level);
+  res.json({ levels });
+});
+
+app.get('/api/admin/shop', requireAdmin, async (req, res) => {
+  res.json({ shop: await accounts.getShop() });
+});
+app.post('/api/admin/shop', requireAdmin, async (req, res) => {
+  const shop = await accounts.addShopItem(req.body || {});
+  res.json({ shop });
+});
+app.delete('/api/admin/shop/:id', requireAdmin, async (req, res) => {
+  const shop = await accounts.removeShopItem(req.params.id);
+  res.json({ shop });
+});
+
+// ---------------- 玩家个人中心 REST 接口 ----------------
+async function requireAccount(req, res, next) {
+  const acc = await accounts.authToken(req.headers['x-account-token']);
+  if (!acc) { res.status(401).json({ error: '登录状态已失效，请重新登录' }); return; }
+  req.account = acc;
+  next();
+}
+
+app.get('/api/profile', requireAccount, async (req, res) => {
+  const profile = await accounts.getProfile(req.account.username);
+  if (!profile) { res.status(404).json({ error: '账号不存在' }); return; }
+  res.json(profile);
+});
+
+app.post('/api/profile/avatar', requireAccount, async (req, res) => {
+  const r = await accounts.setAvatar(req.account.username, (req.body || {}).avatar);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.post('/api/profile/redeem', requireAccount, async (req, res) => {
+  const r = await accounts.redeemCoupon(req.account.username, (req.body || {}).code);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.post('/api/profile/redeem-shop', requireAccount, async (req, res) => {
+  const r = await accounts.redeemShopItem(req.account.username, (req.body || {}).itemId);
+  if (r.error) { res.status(400).json({ error: r.error }); return; }
+  res.json(r);
+});
+
+app.get('/api/rewards-config', async (req, res) => {
+  res.json({ levels: await accounts.getLevels(), shop: await accounts.getShop() });
+});
+
+app.get('/api/tournaments', (req, res) => {
+  res.json({ tournaments: tm.listTournaments() });
+});
+
+app.get('/api/promotion', async (req, res) => {
+  res.json(await accounts.getPromotion());
 });
 
 function send(ws, obj) {
