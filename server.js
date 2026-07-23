@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { dealHand, applyAction, serializeForViewer } = require('./game/engine');
+const accounts = require('./accounts');
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -27,17 +28,41 @@ function send(ws, obj) {
 }
 
 const AUTO_NEXT_HAND_DELAY_MS = 8000; // 摊牌后自动开始下一局的等待时间
+const AUTO_PILOT_DELAY_MS = 3000;     // 掉线玩家轮到自己时，托管代打的等待时间（不受房主设置的思考时间限制）
 
 function broadcastRoom(room) {
   scheduleTurnTimer(room);
   scheduleAutoNextHand(room);
+  syncPointsOnShowdown(room);
   if (room.hostWs) send(room.hostWs, serializeForViewer(room, '__host__'));
   room.players.forEach(p => { if (p.ws) send(p.ws, serializeForViewer(room, p.id)); });
 }
 
-// 思考时间计时器：轮到某人时若设置了限时，超时自动执行默认动作（能过牌就过牌，否则弃牌）
+// 摊牌结算后，把有账号的玩家当前筹码同步写回账号积分（每一局只同步一次）
+function syncPointsOnShowdown(room) {
+  if (room.stage !== 'showdown') return;
+  if (room._pointsSyncedHand === room.handNumber) return;
+  room._pointsSyncedHand = room.handNumber;
+  room.players.forEach(p => {
+    if (p.accountUsername) accounts.updatePoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+  });
+}
+
+// 思考时间/托管计时器：
+// - 在线玩家：按房主设置的思考时间，超时自动执行默认动作（能过牌就过牌，否则弃牌）
+// - 掉线玩家（托管中）：不管房主设置了多久，固定用较短的托管延迟，避免拖慢整桌
 function scheduleTurnTimer(room) {
-  if (room.turn == null || room.stage === 'lobby' || room.stage === 'showdown' || !room.turnTimeLimit) {
+  if (room.turn == null || room.stage === 'lobby' || room.stage === 'showdown') {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+    room.turnDeadline = null;
+    room._scheduledTurn = null;
+    return;
+  }
+  const player = room.players[room.turn];
+  const isAway = !player || !player.connected;
+  const limitMs = isAway ? AUTO_PILOT_DELAY_MS : (room.turnTimeLimit ? room.turnTimeLimit * 1000 : 0);
+  if (!limitMs) {
     clearTimeout(room.turnTimer);
     room.turnTimer = null;
     room.turnDeadline = null;
@@ -47,17 +72,17 @@ function scheduleTurnTimer(room) {
   if (room._scheduledTurn === room.turn && room.turnTimer) return; // 同一回合已经在计时，不重复设置
   clearTimeout(room.turnTimer);
   room._scheduledTurn = room.turn;
-  room.turnDeadline = Date.now() + room.turnTimeLimit * 1000;
+  room.turnDeadline = isAway ? null : (Date.now() + limitMs); // 托管代打不展示倒计时，直接静默处理
   const turnIdxAtSchedule = room.turn;
   room.turnTimer = setTimeout(() => {
     room.turnTimer = null;
     if (room.turn !== turnIdxAtSchedule) return; // 这期间已经有人手动操作了，忽略
-    const player = room.players[turnIdxAtSchedule];
-    if (!player) return;
-    const need = room.currentBet - player.betThisStreet;
-    applyAction(room, player.id, need > 0 ? 'fold' : 'check', null);
+    const p = room.players[turnIdxAtSchedule];
+    if (!p) return;
+    const need = room.currentBet - p.betThisStreet;
+    applyAction(room, p.id, need > 0 ? 'fold' : 'check', null);
     broadcastRoom(room);
-  }, room.turnTimeLimit * 1000);
+  }, limitMs);
 }
 
 // 摊牌后自动开始下一局，不需要房主手动点
@@ -93,7 +118,7 @@ wss.on('connection', ws => {
   ws.on('message', raw => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
-    handleMessage(ws, msg);
+    handleMessage(ws, msg).catch(e => console.error('处理消息出错:', e));
   });
   ws.on('close', () => handleDisconnect(ws));
 });
@@ -109,8 +134,26 @@ setInterval(() => {
   });
 }, 20000);
 
-function handleMessage(ws, msg) {
+async function handleMessage(ws, msg) {
   switch (msg.type) {
+    case 'register': {
+      const r = await accounts.register(msg.username, msg.password);
+      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      send(ws, { type: 'account', username: r.username, points: r.points, accountToken: r.accountToken });
+      break;
+    }
+    case 'login': {
+      const r = await accounts.login(msg.username, msg.password);
+      if (r.error) { send(ws, { type: 'error', message: r.error }); return; }
+      send(ws, { type: 'account', username: r.username, points: r.points, accountToken: r.accountToken });
+      break;
+    }
+    case 'account_auth': {
+      const acc = await accounts.authToken(msg.accountToken);
+      if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录' }); return; }
+      send(ws, { type: 'account', username: acc.username, points: acc.points, accountToken: msg.accountToken });
+      break;
+    }
     case 'host_create': {
       const roomId = randomId(6);
       const hostToken = randomToken();
@@ -148,10 +191,22 @@ function handleMessage(ws, msg) {
       const room = rooms.get((msg.roomId || '').toUpperCase());
       if (!room) { send(ws, { type: 'error', message: '房间不存在，请检查房间码' }); return; }
       if (room.players.length >= 9) { send(ws, { type: 'error', message: '房间已满（最多 9 人）' }); return; }
-      const name = (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
+
+      let accountUsername = null;
+      let startChips = room.startingChips;
+      if (msg.accountToken) {
+        const acc = await accounts.authToken(msg.accountToken);
+        if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录后再加入' }); return; }
+        if (acc.points <= 0) { send(ws, { type: 'error', message: '账号积分为 0，无法入座，请联系房主' }); return; }
+        if (room.players.some(p => p.accountUsername === acc.username)) { send(ws, { type: 'error', message: '该账号已经在本房间中' }); return; }
+        accountUsername = acc.username;
+        startChips = acc.points;
+      }
+
+      const name = accountUsername || (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
       const id = randomId(8);
       const token = randomToken();
-      const player = { id, name, token, chips: room.startingChips, cards: [], folded: false, allIn: false, betThisStreet: 0, totalContrib: 0, ws, connected: true };
+      const player = { id, name, token, accountUsername, chips: startChips, cards: [], folded: false, allIn: false, betThisStreet: 0, totalContrib: 0, ws, connected: true };
       room.players.push(player);
       ws.roomId = room.id; ws.playerId = id;
       send(ws, { type: 'joined', roomId: room.id, playerId: id, playerToken: token, roomName: room.name });
@@ -165,6 +220,7 @@ function handleMessage(ws, msg) {
       if (!player) { send(ws, { type: 'error', message: '身份校验失败，请重新加入' }); return; }
       player.ws = ws; player.connected = true;
       ws.roomId = room.id; ws.playerId = player.id;
+      if (room.turn === room.players.indexOf(player)) room._scheduledTurn = null; // 重连恢复正常思考时间，不再走托管快速通道
       send(ws, { type: 'joined', roomId: room.id, playerId: player.id, playerToken: player.token, roomName: room.name });
       broadcastRoom(room);
       break;
@@ -220,7 +276,12 @@ function handleDisconnect(ws) {
   }
   if (ws.playerId) {
     const p = room.players.find(x => x.id === ws.playerId);
-    if (p) { p.connected = false; p.ws = null; }
+    if (p) {
+      p.connected = false; p.ws = null;
+      if (p.accountUsername) accounts.updatePoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+      const idx = room.players.indexOf(p);
+      if (room.turn === idx) room._scheduledTurn = null; // 强制重新排计时器，走托管快速通道
+    }
     broadcastRoom(room);
   }
 }
@@ -244,4 +305,9 @@ setInterval(() => {
 }, 30000);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('德州扑克对战服务已启动，端口 ' + PORT));
+accounts.load().then(() => {
+  server.listen(PORT, () => console.log('德州扑克对战服务已启动，端口 ' + PORT));
+}).catch(e => {
+  console.error('账户存储初始化失败:', e);
+  server.listen(PORT, () => console.log('德州扑克对战服务已启动（账户存储初始化有误），端口 ' + PORT));
+});
