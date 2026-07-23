@@ -174,8 +174,8 @@
   }
 
   // ==================== 房主：创建牌局 ====================
-  function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount){
-    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers, botCount}));
+  function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount, gameType, minBuyIn){
+    connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers, botCount, gameType, minBuyIn}));
   }
   function manageRoom(r){
     roomId = r.roomId; hostToken = r.hostToken; lastState = null; lastError = null;
@@ -221,11 +221,19 @@
           <h2 class="section-title">创建新牌局</h2>
           <p class="section-sub">生成房间码后，把码和加入地址发给朋友，让他们在自己手机上打开加入；如果勾选"公开"，玩家也能在自己的大厅页面里直接找到这桌，不用等你发链接。</p>
           <div class="field"><label>牌局名称</label><input type="text" id="rName" value="朋友局"></div>
-          <div class="field"><label>起始筹码</label><input type="number" id="rChips" value="1000" min="20"></div>
+          <div class="field"><label>游戏类型</label>
+            <select id="rGameType">
+              <option value="holdem">德州扑克 Hold'em</option>
+              <option value="omaha">奥马哈 Omaha</option>
+            </select>
+          </div>
+          <div class="field"><label>建议起始筹码（没指定买入金额时的参考值）</label><input type="number" id="rChips" value="1000" min="20"></div>
           <div class="field" style="display:flex;gap:12px;">
             <div style="flex:1"><label>小盲注</label><input type="number" id="rSB" value="5" min="1"></div>
             <div style="flex:1"><label>大盲注</label><input type="number" id="rBB" value="10" min="2"></div>
           </div>
+          <div class="field"><label>最低买入积分</label><input type="number" id="rMinBuyIn" value="200" min="1"></div>
+          <p class="section-sub" style="margin:-6px 0 10px;">这桌改成"买入制"了：玩家坐下时要自己选买入多少积分（不再是自动带上全部余额），低于这个数不能入座；筹码打光了可以在桌上直接补码。</p>
           <div class="field" style="display:flex;gap:12px;">
             <div style="flex:1"><label>每人思考时间（秒，0 = 不限时）</label><input type="number" id="rTimer" value="30" min="0"></div>
             <div style="flex:1"><label>最大人数</label><input type="number" id="rMaxPlayers" value="9" min="2" max="9"></div>
@@ -372,7 +380,9 @@
       const maxPlayers = Math.min(9, Math.max(2, parseInt(document.getElementById('rMaxPlayers').value,10)||9));
       const isPublic = document.getElementById('rPublic').checked;
       const botCount = Math.min(8, Math.max(0, parseInt(document.getElementById('rBotCount').value,10)||0));
-      createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount);
+      const gameType = document.getElementById('rGameType').value;
+      const minBuyIn = Math.max(1, parseInt(document.getElementById('rMinBuyIn').value,10)||200);
+      createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount, gameType, minBuyIn);
     };
     document.querySelectorAll('[data-manage]').forEach(b=>{
       b.onclick = () => {
