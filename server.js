@@ -365,7 +365,11 @@ function scheduleTurnTimer(room) {
       if (!p) return;
       try {
         const decision = botModule.decideBotAction(room, p);
-        applyAction(room, p.id, decision.action, decision.amount);
+        const result = applyAction(room, p.id, decision.action, decision.amount);
+        if (result && result.error) {
+          console.error('机器人操作被拒绝（' + decision.action + '），改为弃牌:', result.error);
+          applyAction(room, p.id, 'fold', null);
+        }
       } catch (e) {
         console.error('机器人决策出错，改为弃牌:', e.message);
         applyAction(room, p.id, 'fold', null);
@@ -406,6 +410,28 @@ function hasRealHumanPresent(room) {
   return room.players.some(p => !p.isBot && p.connected);
 }
 
+// 每次真正发下一手牌之前先清理一遍：
+// 1) 玩家自己点了"离开牌桌"的，正式从座位上移除
+// 2) 断线的人已经连续一整轮（一手牌）还没回来的，直接踢出（托管代打只给一轮的容忍度）
+function cleanupBeforeDeal(room) {
+  if (room.tournamentId) return; // 锦标赛桌不做这个清理，走锦标赛自己的淘汰/托管逻辑
+  const toKick = [];
+  room.players.forEach(p => {
+    if (p.pendingLeave) { toKick.push(p); return; }
+    if (!p.isBot && !p.connected && p.chips > 0) {
+      p.disconnectedHandStrikes = (p.disconnectedHandStrikes || 0) + 1;
+      if (p.disconnectedHandStrikes > 1) toKick.push(p);
+    }
+  });
+  toKick.forEach(p => {
+    if (p.accountUsername) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+  });
+  if (toKick.length) {
+    const kickIds = new Set(toKick.map(p => p.id));
+    room.players = room.players.filter(p => !kickIds.has(p.id));
+  }
+}
+
 function scheduleAutoNextHand(room) {
   if (room.stage !== 'showdown') {
     clearTimeout(room.autoNextTimer);
@@ -420,6 +446,7 @@ function scheduleAutoNextHand(room) {
     room.autoNextTimer = null;
     if (room.stage !== 'showdown') return;
     if (!hasRealHumanPresent(room)) return;
+    cleanupBeforeDeal(room);
     dealHand(room);
     broadcastRoom(room);
   }, AUTO_NEXT_HAND_DELAY_MS);
@@ -599,15 +626,36 @@ async function handleMessage(ws, msg) {
       }
       if (!room || !player) { send(ws, { type: 'error', message: '身份校验失败，请重新加入' }); return; }
       player.ws = ws; player.connected = true;
+      player.disconnectedHandStrikes = 0; // 重连成功，清零"连续离线轮数"计数
       ws.roomId = room.id; ws.playerId = player.id;
       if (room.turn === room.players.indexOf(player)) room._scheduledTurn = null; // 重连恢复正常思考时间，不再走托管快速通道
       send(ws, { type: 'joined', roomId: room.id, playerId: player.id, playerToken: player.token, roomName: room.name });
       broadcastRoom(room);
       break;
     }
+    case 'leave_table': {
+      const room = rooms.get(ws.roomId);
+      if (!room) { send(ws, { type: 'error', message: '房间不存在' }); return; }
+      const p = room.players.find(x => x.id === ws.playerId);
+      if (!p) { send(ws, { type: 'error', message: '找不到你的座位' }); return; }
+      if (p.accountUsername && !room.tournamentId) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+      if (room.stage === 'lobby' || room.stage === 'showdown' || p.folded || p.allIn) {
+        room.players = room.players.filter(x => x.id !== p.id);
+      } else {
+        // 手牌进行中且还没弃牌/全下：先帮他自动弃牌，等这手牌结束（下一手发牌前）再正式移出座位，
+        // 这样不会打断正在进行的这手牌的下注结构。
+        applyAction(room, p.id, 'fold', null);
+        p.pendingLeave = true;
+      }
+      ws.roomId = null; ws.playerId = null;
+      send(ws, { type: 'left_table' });
+      broadcastRoom(room);
+      break;
+    }
     case 'host_start':
     case 'host_next_hand': {
       const room = requireHost(ws); if (!room) return;
+      cleanupBeforeDeal(room);
       if (room.players.length < 2) { send(ws, { type: 'error', message: '至少需要 2 名玩家才能开局' }); return; }
       const result = dealHand(room);
       if (result && result.error) { send(ws, { type: 'error', message: result.error }); }
