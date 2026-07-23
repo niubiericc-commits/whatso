@@ -1,4 +1,4 @@
-const { newDeck, shuffle, best7, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
+const { newDeck, shuffle, best7, bestOmaha, compareVal, computeSidePots, HAND_NAMES } = require('./handEval');
 
 function nextActiveSeat(room, idx) {
   const arr = room.activeSeats;
@@ -35,7 +35,8 @@ function dealHand(room) {
   room.pot = 0; room.community = []; room.stage = 'preflop'; room.results = null;
   room.handNumber = (room.handNumber || 0) + 1;
   room.deck = shuffle(newDeck());
-  room.activeSeats.forEach(i => { room.players[i].cards = [room.deck.pop(), room.deck.pop()]; });
+  const holeCount = room.gameType === 'omaha' ? 4 : 2;
+  room.activeSeats.forEach(i => { room.players[i].cards = Array.from({ length: holeCount }, () => room.deck.pop()); });
 
   let sbIdx, bbIdx, startIdx;
   if (room.activeSeats.length === 2) {
@@ -87,9 +88,10 @@ function advanceStreet(room) {
 
 function runShowdown(room) {
   const alive = room.players.filter(p => !p.folded);
+  const isOmaha = room.gameType === 'omaha';
   alive.forEach(p => {
-    p.handVal = best7([...p.cards, ...room.community]);
-    p.handName = HAND_NAMES[p.handVal[0]];
+    p.handVal = isOmaha ? bestOmaha(p.cards, room.community) : best7([...p.cards, ...room.community]);
+    p.handName = p.handVal ? HAND_NAMES[p.handVal[0]] : '';
   });
   const pots = computeSidePots(room.players);
   room.results = [];
@@ -184,6 +186,7 @@ function serializeForViewer(room, viewerId) {
     turnTimeLimit: room.turnTimeLimit || 0,
     turnDeadline: room.turnDeadline || null,
     nextHandDeadline: room.nextHandDeadline || null,
+    gameType: room.gameType || 'holdem',
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
@@ -196,6 +199,7 @@ function serializeForViewer(room, viewerId) {
         allIn: p.allIn,
         betThisStreet: p.betThisStreet,
         connected: !!p.connected,
+        hasAccount: !!p.accountUsername,
         seated,
         hasCards: !!(p.cards && p.cards.length),
         cards: revealCards ? (p.cards || []) : [],
@@ -206,4 +210,5 @@ function serializeForViewer(room, viewerId) {
   };
 }
 
+module.exports = { dealHand, applyAction, serializeForViewer };
 module.exports = { dealHand, applyAction, serializeForViewer };
