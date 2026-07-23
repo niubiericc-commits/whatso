@@ -251,6 +251,43 @@ app.get('/api/tables', (req, res) => {
   res.json({ tables: list });
 });
 
+// 管理员视角：所有现金桌（不管公开/私密），用来监控和强制关闭
+app.get('/api/admin/tables', requireAdmin, (req, res) => {
+  const list = [];
+  rooms.forEach(r => {
+    if (r.tournamentId) return; // 锦标赛桌走锦标赛自己的管理界面
+    list.push({
+      id: r.id,
+      name: r.name,
+      smallBlind: r.smallBlind,
+      bigBlind: r.bigBlind,
+      isPublic: !!r.isPublic,
+      playerCount: r.players.length,
+      maxPlayers: r.maxPlayers || 9,
+      humanCount: r.players.filter(p => !p.isBot).length,
+      botCount: r.players.filter(p => p.isBot).length,
+      connectedCount: (r.hostWs ? 1 : 0) + r.players.filter(p => p.ws).length,
+      stage: r.stage,
+      handNumber: r.handNumber || 0
+    });
+  });
+  list.sort((a, b) => b.connectedCount - a.connectedCount);
+  res.json({ tables: list });
+});
+
+app.post('/api/admin/tables/:id/close', requireAdmin, (req, res) => {
+  const room = rooms.get(req.params.id);
+  if (!room) { res.status(404).json({ error: '房间不存在（可能已经关闭）' }); return; }
+  clearTimeout(room.turnTimer);
+  clearTimeout(room.autoNextTimer);
+  // 通知房间里还连着的人：房间被管理员关闭了
+  const closeMsg = { type: 'error', message: '这个牌局已被管理员关闭' };
+  if (room.hostWs) send(room.hostWs, closeMsg);
+  room.players.forEach(p => { if (p.ws) send(p.ws, closeMsg); });
+  rooms.delete(req.params.id);
+  res.json({ ok: true });
+});
+
 app.get('/api/promotion', ah(async (req, res) => {
   res.json(await accounts.getPromotion());
 }));
@@ -364,6 +401,11 @@ function scheduleTurnTimer(room) {
 }
 
 // 摊牌后自动开始下一局，不需要房主手动点
+function hasRealHumanPresent(room) {
+  if (room.hostWs) return true;
+  return room.players.some(p => !p.isBot && p.connected);
+}
+
 function scheduleAutoNextHand(room) {
   if (room.stage !== 'showdown') {
     clearTimeout(room.autoNextTimer);
@@ -372,10 +414,12 @@ function scheduleAutoNextHand(room) {
     return;
   }
   if (room.autoNextTimer) return; // 已经在倒计时，不重复设置
+  if (!hasRealHumanPresent(room)) return; // 没有真人在场（房主也不在），暂停发牌，机器人不会自己空转下去
   room.nextHandDeadline = Date.now() + AUTO_NEXT_HAND_DELAY_MS;
   room.autoNextTimer = setTimeout(() => {
     room.autoNextTimer = null;
     if (room.stage !== 'showdown') return;
+    if (!hasRealHumanPresent(room)) return;
     dealHand(room);
     broadcastRoom(room);
   }, AUTO_NEXT_HAND_DELAY_MS);
@@ -505,7 +549,7 @@ async function handleMessage(ws, msg) {
         }
       }
       ws.roomId = roomId; ws.isHost = true;
-      send(ws, { type: 'host_created', roomId, hostToken });
+      send(ws, { type: 'host_created', roomId, hostToken, roomName: room.name });
       broadcastRoom(room);
       break;
     }
@@ -626,10 +670,11 @@ function handleDisconnect(ws) {
 setInterval(() => {
   const now = Date.now();
   for (const [id, room] of rooms.entries()) {
+    if (room.tournamentId) continue; // 锦标赛桌子由锦标赛自己的生命周期管理，这里不处理
     const anyConnected = room.hostWs || room.players.some(p => p.ws);
     if (!anyConnected) {
       room.emptyStreak = (room.emptyStreak || 0) + 1;
-      if (room.emptyStreak > 120) {
+      if (room.emptyStreak > 20) { // 30秒一次，20次=10分钟无人后清理，而不是原来的1小时
         clearTimeout(room.turnTimer);
         clearTimeout(room.autoNextTimer);
         rooms.delete(id);
