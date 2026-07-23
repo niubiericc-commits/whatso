@@ -54,7 +54,10 @@ body{
 .app.wide{max-width:1100px;}
 .app.app-table-wide{max-width:1100px;}
 @media (min-width:860px){
-  .app.app-table-wide{max-width:1180px;}
+  .app.app-table-wide{max-width:1220px;}
+}
+@media (min-width:1300px){
+  .app.app-table-wide{max-width:1300px;}
 }
 
 /* ---------- 顶部条 ---------- */
@@ -193,9 +196,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .gt-potline{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:12.5px;color:var(--gold-bright);margin-bottom:12px;flex-wrap:wrap;gap:6px;}
 .community{display:flex;gap:6px;justify-content:center;margin:8px 0 16px;flex-wrap:wrap;min-height:64px;}
 .pcard{width:44px;height:62px;border-radius:7px;background:linear-gradient(165deg,#fffdf8,var(--cream) 60%);display:flex;flex-direction:column;
-  align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;
+  align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;position:relative;
   box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 3px 0 rgba(0,0,0,.06) inset, 0 6px 14px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,.3);
   border:1px solid rgba(0,0,0,.06);}
+.pcard .corner{position:absolute;top:3px;left:4px;font-size:8px;line-height:1;letter-spacing:-0.5px;opacity:.75;}
 .pcard .r{font-size:15px;} .pcard .s{font-size:13px;}
 .pcard.red{color:var(--burgundy);} .pcard.black{color:var(--ink);}
 .pcard.back{background:repeating-linear-gradient(45deg, var(--gold) 0, var(--gold) 4px, var(--felt) 4px, var(--felt) 8px);border:2px solid var(--gold-bright);}
@@ -230,6 +234,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .action-row .btn{width:auto;flex:1;min-width:90px;border-radius:999px;padding:14px 18px;font-size:13.5px;letter-spacing:.02em;text-transform:uppercase;font-weight:800;}
 .pot-quick-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px;}
 .pot-quick-row .btn{width:auto;flex:1;min-width:64px;}
+.bet-slider-row{margin-top:12px;padding:0 4px;}
+.bet-slider-row input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;
+  background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright));outline:none;cursor:pointer;}
+.bet-slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff,#d8d2c2 70%);box-shadow:0 3px 8px rgba(0,0,0,.5), 0 0 0 3px var(--gold);cursor:grab;}
+.bet-slider-row input[type=range]::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.08);}
+.bet-slider-row input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;border:none;
+  background:radial-gradient(circle at 35% 30%,#fff,#d8d2c2 70%);box-shadow:0 3px 8px rgba(0,0,0,.5), 0 0 0 3px var(--gold);cursor:grab;}
 .raise-box{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;}
 .raise-box input{width:110px;border-radius:999px;text-align:center;}
 .raise-box .btn{border-radius:999px;}
@@ -258,9 +270,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   border-radius:999px;padding:6px 14px 6px 8px;font-family:var(--font-mono);font-weight:700;font-size:14px;color:var(--gold-bright);box-shadow:var(--shadow-card);}
 .balance-pill .coin{width:20px;height:20px;border-radius:50%;flex:none;background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);box-shadow:0 0 0 2px var(--ink);}
 .table-strip{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:var(--gold-bright);margin-bottom:10px;flex-wrap:wrap;gap:4px;}
-.poker-table-wrap{position:relative;width:100%;max-width:540px;margin:0 auto 20px;aspect-ratio:4/3;}
+.poker-table-wrap{position:relative;width:100%;max-width:620px;margin:0 auto 20px;aspect-ratio:4/3;}
 @media (min-width:860px){
-  .poker-table-wrap{max-width:920px;aspect-ratio:16/9;}
+  .poker-table-wrap{max-width:1040px;aspect-ratio:16/9;}
+}
+@media (min-width:1300px){
+  .poker-table-wrap{max-width:1150px;}
 }
 .poker-table-rail{position:absolute;inset:3%;border-radius:50%;
   background:
@@ -316,12 +331,32 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   background:radial-gradient(circle at 35% 30%, #fff, #d8d2c2 70%);color:var(--ink);
   font-family:var(--font-mono);font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;
   box-shadow:0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.15);}
-.seat-bet-chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:9px;
-  background:rgba(8,16,13,0.85);color:var(--gold-bright);padding:2px 7px 2px 3px;border-radius:999px;
-  border:1px solid rgba(255,216,115,0.5);margin-top:3px;}
-.seat-bet-chip::before{content:'';width:11px;height:11px;border-radius:50%;flex:none;
-  background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1px rgba(0,0,0,.4);}
+.seat-bet-chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:11.5px;font-weight:800;
+  background:linear-gradient(180deg,rgba(20,28,20,0.95),rgba(8,16,13,0.92));color:var(--gold-bright);padding:4px 10px 4px 4px;border-radius:999px;
+  border:1.5px solid var(--gold-bright);margin-top:4px;box-shadow:0 3px 10px rgba(0,0,0,.5), 0 0 10px -2px rgba(255,216,115,0.4);
+  animation:bet-chip-in .25s ease-out;}
+@keyframes bet-chip-in{from{opacity:0;transform:scale(.6) translateY(4px);}to{opacity:1;transform:scale(1) translateY(0);}}
+.seat-bet-chip::before{content:'';width:14px;height:14px;border-radius:50%;flex:none;
+  background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1.5px rgba(0,0,0,.5);}
+@media (min-width:860px){ .seat-bet-chip{font-size:14px;padding:5px 13px 5px 5px;} .seat-bet-chip::before{width:17px;height:17px;} }
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
+
+/* ---------- 底池筹码飞向赢家的动画（起始位置由 JS 设置，具体移动靠 JS 切换 left/top 触发 transition） ---------- */
+.pot-fly-chip{position:absolute;width:18px;height:18px;border-radius:50%;z-index:8;pointer-events:none;
+  background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);
+  box-shadow:0 0 0 2px var(--ink), 0 4px 10px rgba(0,0,0,.5);
+  transform:translate(-50%,-50%);}
+/* ---------- 赢钱金额浮字 ---------- */
+.win-amount-pop{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;
+  font-family:var(--font-mono);font-weight:800;font-size:13px;color:var(--success);
+  text-shadow:0 0 10px rgba(62,207,142,0.6);white-space:nowrap;z-index:6;pointer-events:none;
+  animation:win-amount-float 1.6s ease-out forwards;}
+@keyframes win-amount-float{
+  0%{opacity:0;transform:translateX(-50%) translateY(6px);}
+  15%{opacity:1;transform:translateX(-50%) translateY(0);}
+  75%{opacity:1;transform:translateX(-50%) translateY(-6px);}
+  100%{opacity:0;transform:translateX(-50%) translateY(-14px);}
+}
 
 /* ---------- 摊牌获胜特效：赢家座位上方浮现放大的手牌 + WIN 字样 ---------- */
 .win-burst{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);z-index:5;text-align:center;
@@ -333,6 +368,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .win-burst .win-label{font-family:var(--font-display);font-size:20px;letter-spacing:.12em;
   background:linear-gradient(180deg,var(--gold-bright),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;
   text-shadow:0 0 18px rgba(255,216,115,0.5);}
+.win-burst .win-handname{font-family:var(--font-mono);font-size:10.5px;font-weight:800;color:var(--ink);
+  background:linear-gradient(180deg,var(--gold-bright),var(--gold));padding:2px 9px;border-radius:999px;margin-top:2px;
+  box-shadow:0 3px 8px rgba(0,0,0,.4);white-space:nowrap;}
 
 /* 玩家头像按座位序号轮换配色，视觉上更接近主流客户端的"每人一色" */
 .avatar-c0{background:linear-gradient(150deg,#3a6ea8,#1f3f63);}
