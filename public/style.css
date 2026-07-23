@@ -38,6 +38,15 @@ input:focus{outline:none;border-color:var(--gold);}
 .room-code{font-family:var(--font-display);font-size:44px;letter-spacing:.15em;color:var(--gold-bright);text-align:center;}
 .hint-box{border:1px dashed var(--line);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.7;}
 .err-box{border:1px solid var(--burgundy-bright);background:rgba(140,47,58,0.12);color:var(--burgundy-bright);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px;}
+.home-btn{font-family:var(--font-mono);font-size:12px;color:var(--muted);background:none;border:1px solid var(--line);
+  padding:8px 14px;border-radius:8px;cursor:pointer;}
+.home-btn:hover{color:var(--cream);border-color:var(--gold);}
+.mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}
+.mode-card{border:1px solid var(--line);border-radius:16px;padding:26px 20px;cursor:pointer;background:rgba(0,0,0,0.15);transition:.15s;}
+.mode-card:hover{border-color:var(--gold);background:rgba(207,159,51,0.06);transform:translateY(-2px);}
+.mode-icon{font-size:30px;margin-bottom:10px;}
+.mode-card h3{font-family:var(--font-display);font-size:22px;margin:0 0 6px;color:var(--cream);letter-spacing:.02em;}
+.mode-card p{font-size:12.5px;color:var(--muted);line-height:1.6;margin:0;}
 
 .gt-board{border:1px solid var(--line);border-radius:18px;padding:18px;background:radial-gradient(ellipse at center, var(--felt-light), var(--felt-dark));margin-bottom:14px;}
 .gt-potline{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:12.5px;color:var(--gold-bright);margin-bottom:12px;flex-wrap:wrap;gap:6px;}
