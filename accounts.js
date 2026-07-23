@@ -11,6 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const STARTING_POINTS = 1000;
+const STARTING_CLUB_POINTS = 2000; // 新用户注册赠送（现金桌坐下/买门票/商城兑换都用这份积分）
 const USE_REDIS = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 
 let redis = null;
@@ -305,10 +306,10 @@ async function register(username, password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = hashPassword(password, salt);
   const token = makeToken();
-  const record = { username: name, salt, hash, points: STARTING_POINTS, clubPoints: 0, token, avatar: '🂠', history: [], coupons: [], rewards: [] };
+  const record = { username: name, salt, hash, points: STARTING_POINTS, clubPoints: STARTING_CLUB_POINTS, token, avatar: '🂠', history: [{kind:'club', delta:STARTING_CLUB_POINTS, balance:STARTING_CLUB_POINTS, note:'新人注册赠送', time:Date.now()}], coupons: [], rewards: [] };
   await setUser(key, record);
   await setTokenIndex(token, key);
-  return { username: name, points: STARTING_POINTS, clubPoints: 0, accountToken: token };
+  return { username: name, points: STARTING_POINTS, clubPoints: STARTING_CLUB_POINTS, accountToken: token, isNewAccount: true };
 }
 
 async function login(username, password) {
