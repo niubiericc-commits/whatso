@@ -69,6 +69,22 @@ function best7(cards7) {
   return best;
 }
 
+// 奥马哈规则：必须正好用 2 张底牌 + 正好 3 张公共牌，不能像德州那样任意选 5 张。
+// holeCards 通常是 4 张，community 至少要有 3 张（翻牌）才能算出牌型，否则返回 null。
+function bestOmaha(holeCards, community) {
+  if (!community || community.length < 3) return null;
+  let best = null;
+  const holePairs = combinations(holeCards, 2);
+  const boardTriples = combinations(community, 3);
+  holePairs.forEach(hp => {
+    boardTriples.forEach(bt => {
+      const v = handValue([...hp, ...bt]);
+      if (!best || compareVal(v, best) > 0) best = v;
+    });
+  });
+  return best;
+}
+
 function computeSidePots(players) {
   let contribs = players.filter(p => p.totalContrib > 0).map(p => ({ p, amt: p.totalContrib }));
   const pots = [];
@@ -82,4 +98,4 @@ function computeSidePots(players) {
   return pots;
 }
 
-module.exports = { newDeck, shuffle, best7, compareVal, computeSidePots, HAND_NAMES };
+module.exports = { newDeck, shuffle, best7, bestOmaha, compareVal, computeSidePots, HAND_NAMES };
