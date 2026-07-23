@@ -68,7 +68,7 @@ function handStrength(holeCards, community, gameType) {
 function clampRaise(room, player, raiseTo) {
   const maxTo = player.betThisStreet + player.chips;
   if (raiseTo >= maxTo) return { action: 'allin' };
-  const minTo = room.currentBet + 1;
+  const minTo = room.currentBet + (room.minRaise || room.bigBlind); // 遵守标准最低加注规则，否则会被服务器拒绝导致卡住
   raiseTo = Math.max(Math.floor(raiseTo), minTo);
   if (raiseTo >= maxTo) return { action: 'allin' };
   return { action: 'raise', amount: raiseTo };
