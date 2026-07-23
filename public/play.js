@@ -1,8 +1,60 @@
 (function(){
   const SUIT_SYMBOL = { s:'♠', h:'♥', d:'♦', c:'♣' };
   const RANK_LABEL = {11:'J',12:'Q',13:'K',14:'A'};
-  const STAGE_LABEL = { lobby:'等待房主开局', preflop:'翻牌前', flop:'翻牌', turn:'转牌', river:'河牌', showdown:'摊牌' };
-  const HAND_NAMES = ['高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
+  // ---------------- 多语言（先覆盖牌桌核心操作，个人中心等说明性文字暂时保留中文） ----------------
+  const I18N = {
+    stage_lobby:{zh:'等待房主开局',en:'Waiting for host'}, stage_preflop:{zh:'翻牌前',en:'Pre-Flop'},
+    stage_flop:{zh:'翻牌',en:'Flop'}, stage_turn:{zh:'转牌',en:'Turn'}, stage_river:{zh:'河牌',en:'River'}, stage_showdown:{zh:'摊牌',en:'Showdown'},
+    hand_0:{zh:'高牌',en:'High Card'}, hand_1:{zh:'一对',en:'Pair'}, hand_2:{zh:'两对',en:'Two Pair'}, hand_3:{zh:'三条',en:'Three of a Kind'},
+    hand_4:{zh:'顺子',en:'Straight'}, hand_5:{zh:'同花',en:'Flush'}, hand_6:{zh:'葫芦',en:'Full House'}, hand_7:{zh:'四条',en:'Four of a Kind'}, hand_8:{zh:'同花顺',en:'Straight Flush'},
+    action_fold:{zh:'弃牌',en:'Fold'}, action_check:{zh:'过牌',en:'Check'}, action_call:{zh:'跟注',en:'Call'}, action_allin:{zh:'全下',en:'All-In'}, action_raise:{zh:'加注',en:'Raise'},
+    raise_to:{zh:'加注到…',en:'Raise to…'}, your_turn:{zh:'轮到你了',en:'Your Turn'}, my_hand:{zh:'我的手牌',en:'My Hand'},
+    waiting_others:{zh:'等待其他玩家行动…',en:'Waiting for other players…'}, you_folded:{zh:'你本局已弃牌，等待结果…',en:'You folded, waiting for results…'},
+    not_seated:{zh:'本局你没有入座，请等待下一局。',en:"You're not seated this hand, please wait for the next one."},
+    current_hand:{zh:'当前牌型：',en:'Current Hand: '}, pot:{zh:'底池',en:'Pot'}, current_bet:{zh:'当前下注',en:'Bet'}, action_timer:{zh:'行动倒计时',en:'Timer'},
+    join_room:{zh:'加入牌局',en:'Join Table'}, room_code:{zh:'房间码',en:'Room Code'}, your_name_guest:{zh:'你的名字（访客）',en:'Your Name (Guest)'}, join_btn:{zh:'加入',en:'Join'},
+    account_login:{zh:'账号登录（可选）',en:'Account Login (optional)'}, username:{zh:'用户名',en:'Username'}, password:{zh:'密码',en:'Password'},
+    login_btn:{zh:'登录',en:'Log In'}, register_btn:{zh:'注册新账号',en:'Register'}, logged_in:{zh:'已登录',en:'Logged In'}, logout_btn:{zh:'退出登录',en:'Log Out'},
+    quarter_pot:{zh:'1/4 池',en:'1/4 Pot'}, half_pot:{zh:'1/2 池',en:'1/2 Pot'}, three_q_pot:{zh:'3/4 池',en:'3/4 Pot'}, full_pot:{zh:'满池',en:'Pot'},
+    profile_btn:{zh:'👤 个人中心',en:'👤 Profile'}, tournaments_btn:{zh:'🏆 查看锦标赛',en:'🏆 Tournaments'}, back_btn:{zh:'← 返回',en:'← Back'},
+    sound_setting:{zh:'音效',en:'Sound'}, lang_setting:{zh:'语言',en:'Language'}, theme_setting:{zh:'牌桌主题',en:'Table Theme'},
+    hand_hint_setting:{zh:'实时牌型提示',en:'Live Hand Hint'}, quick_raise_setting:{zh:'加注快捷按钮',en:'Quick Raise Buttons'}
+  };
+  function getStrSetting(key, def){ const v = localStorage.getItem('pokergo_setting_'+key); return v===null ? def : v; }
+  function setStrSetting(key, val){ localStorage.setItem('pokergo_setting_'+key, val); }
+  function t(key){ const lang = getStrSetting('lang','zh'); return (I18N[key] && I18N[key][lang]) || (I18N[key] && I18N[key].zh) || key; }
+
+  // ---------------- 音效：用浏览器自带的 Web Audio API 合成简单提示音，不需要任何外部音频文件 ----------------
+  let audioCtx = null;
+  function playTone(freq, duration, type, volume){
+    if(!getSetting('soundOn', true)) return;
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type || 'sine'; osc.frequency.value = freq;
+      gain.gain.value = volume===undefined?0.15:volume;
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.stop(audioCtx.currentTime + duration);
+    }catch(e){}
+  }
+  function soundYourTurn(){ playTone(660,0.15,'sine',0.15); setTimeout(()=>playTone(880,0.18,'sine',0.15),150); }
+  function soundAction(){ playTone(320,0.08,'square',0.08); }
+  function soundWin(){ playTone(523,0.12,'sine',0.15); setTimeout(()=>playTone(659,0.12,'sine',0.15),110); setTimeout(()=>playTone(784,0.25,'sine',0.15),220); }
+  function applyTheme(theme){
+    setStrSetting('theme', theme);
+    if(theme === 'emerald') document.body.removeAttribute('data-theme');
+    else document.body.setAttribute('data-theme', theme);
+  }
+  let lastTurnWasMine = false;
+  let lastSoundedShowdownHand = null;
+
+  const STAGE_LABEL_KEYS = { lobby:'stage_lobby', preflop:'stage_preflop', flop:'stage_flop', turn:'stage_turn', river:'stage_river', showdown:'stage_showdown' };
+  function stageLabel(stage){ return t(STAGE_LABEL_KEYS[stage] || stage); }
+  function handNameLabel(idx){ return t('hand_'+idx); }
 
   const params = new URLSearchParams(location.search);
   const prefillRoom = (params.get('room')||'').toUpperCase();
@@ -16,11 +68,22 @@
   let account = null;       // {username, accountToken}
   let accountPoints = null;
   let accountClubPoints = null;
-  let viewMode = 'join';    // 'join' | 'tournaments'
+  let viewMode = 'join';    // 'join' | 'tournaments' | 'profile'
   let tournamentList = [];
+  let lobbyCategory = 'holdem'; // 'holdem' | 'omaha' | 'free'
   let pendingTournamentId = localStorage.getItem('pokergo_pending_tournament') || null;
   let tournamentEndInfo = null; // {eliminated:true, rank} 或 {results}
   let tournamentPollTimer = null;
+
+  // 个人中心
+  let profileTab = 'mypage'; // mypage | promotion | gamesetting | reward
+  let profileData = null;
+  let promotionData = null;
+  let rewardsConfig = null;
+  let profileBusy = false;
+  const AVATAR_CHOICES = ['🂠','🐯','🐉','🦁','🐺','🦊','🐸','🐧','🦄','🎩','😎','🤠','👑','💀','🃏'];
+  function getSetting(key, def){ const v = localStorage.getItem('pokergo_setting_'+key); return v===null ? def : v==='1'; }
+  function setSetting(key, val){ localStorage.setItem('pokergo_setting_'+key, val?'1':'0'); }
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function cardHtml(c){
@@ -69,7 +132,19 @@
     if(!cards || cards.length<5) return null;
     let best=null;
     combinations(cards,5).forEach(c=>{ const v=handValue(c); if(!best||compareVal(v,best)>0) best=v; });
-    return best ? HAND_NAMES[best[0]] : null;
+    return best ? handNameLabel(best[0]) : null;
+  }
+  // 奥马哈：必须正好用 2 张底牌 + 3 张公共牌，跟德州"任选5张"不一样
+  function currentHandNameOmaha(hole, community){
+    if(!community || community.length<3) return null;
+    let best=null;
+    combinations(hole,2).forEach(hp=>{
+      combinations(community,3).forEach(bt=>{
+        const v = handValue([...hp,...bt]);
+        if(!best||compareVal(v,best)>0) best=v;
+      });
+    });
+    return best ? handNameLabel(best[0]) : null;
   }
 
   // connSeq 保证切换房间时，旧连接的过期消息/自动重连不会污染新房间的状态
@@ -160,6 +235,97 @@
     send({type:'tournament_register', tournamentId, accountToken: account.accountToken});
   }
 
+  // ---------------- 个人中心：普通 HTTP 请求，不走 WebSocket ----------------
+  async function apiGet(path, useAccount){
+    const headers = useAccount && account ? {'X-Account-Token': account.accountToken} : {};
+    const res = await fetch(path, { headers });
+    let data = {}; try{ data = await res.json(); }catch(e){}
+    if(!res.ok) throw new Error(data.error || ('请求失败（状态码 '+res.status+'）'));
+    return data;
+  }
+  async function apiPost(path, body, useAccount){
+    const headers = Object.assign({'Content-Type':'application/json'}, useAccount && account ? {'X-Account-Token': account.accountToken} : {});
+    const res = await fetch(path, { method:'POST', headers, body: JSON.stringify(body||{}) });
+    let data = {}; try{ data = await res.json(); }catch(e){}
+    if(!res.ok) throw new Error(data.error || ('请求失败（状态码 '+res.status+'）'));
+    return data;
+  }
+
+  async function openProfile(){
+    if(!account){ alert('请先登录账号'); return; }
+    viewMode = 'profile'; profileTab = 'mypage'; lastError = null;
+    render();
+    await refreshProfile();
+  }
+  async function refreshProfile(){
+    try{
+      profileData = await apiGet('/api/profile', true);
+      lastError = null;
+    }catch(e){ lastError = e.message; }
+    render();
+  }
+  async function refreshPromotion(){
+    try{ promotionData = await apiGet('/api/promotion', false); }
+    catch(e){ /* 推广信息拉取失败就静默，不打扰 */ }
+    render();
+  }
+  async function refreshRewardsConfig(){
+    try{ rewardsConfig = await apiGet('/api/rewards-config', false); }
+    catch(e){ /* 静默失败 */ }
+    render();
+  }
+  async function redeemShopItem(itemId){
+    profileBusy = true; render();
+    try{
+      await apiPost('/api/profile/redeem-shop', { itemId }, true);
+      lastError = null;
+      await refreshProfile();
+    }catch(e){ lastError = e.message; profileBusy = false; render(); }
+  }
+
+  // ---------------- 新赛事通知订阅：定期轮询 + 浏览器原生通知，不需要任何推送服务 ----------------
+  let notifyTimer = null;
+  let knownTournamentIds = null;
+  async function checkNewTournaments(){
+    try{
+      const r = await apiGet('/api/tournaments', false);
+      const currentIds = new Set(r.tournaments.filter(t=>t.status==='registering').map(t=>t.id));
+      if(knownTournamentIds){
+        r.tournaments.forEach(t=>{
+          if(t.status==='registering' && !knownTournamentIds.has(t.id)){
+            if('Notification' in window && Notification.permission==='granted'){
+              new Notification('新赛事开放报名：'+t.name, { body: '门票 '+t.ticketPrice+' 俱乐部积分，快去看看吧！' });
+            }
+          }
+        });
+      }
+      knownTournamentIds = currentIds;
+    }catch(e){ /* 静默失败，不打扰用户 */ }
+  }
+  function startTournamentNotifyWatcher(){
+    stopTournamentNotifyWatcher();
+    checkNewTournaments();
+    notifyTimer = setInterval(checkNewTournaments, 20000);
+  }
+  function stopTournamentNotifyWatcher(){ clearInterval(notifyTimer); notifyTimer = null; }
+  async function changeAvatar(avatar){
+    profileBusy = true; render();
+    try{
+      await apiPost('/api/profile/avatar', { avatar }, true);
+      await refreshProfile();
+    }catch(e){ lastError = e.message; }
+    profileBusy = false; render();
+  }
+  async function redeemCoupon(code){
+    if(!code){ alert('请输入兑换码'); return; }
+    profileBusy = true; render();
+    try{
+      await apiPost('/api/profile/redeem', { code }, true);
+      lastError = null;
+      await refreshProfile();
+    }catch(e){ lastError = e.message; profileBusy = false; render(); }
+  }
+
   function startTournamentPolling(){
     stopTournamentPolling();
     tournamentPollTimer = setInterval(()=>{
@@ -228,16 +394,22 @@
         return;
       }
 
-      // 分支3：锦标赛列表
+      // 分支3：锦标赛列表 —— 按 Omaha / Hold'em / 免费比赛 三个分类展示
       if(viewMode === 'tournaments'){
-        const rows = tournamentList.map(t => `
+        if(!lobbyCategory) lobbyCategory = 'holdem';
+        const categorize = t => t.ticketPrice===0 ? 'free' : (t.gameType==='omaha' ? 'omaha' : 'holdem');
+        const filtered = tournamentList.filter(t => categorize(t) === lobbyCategory);
+        const counts = { omaha:0, holdem:0, free:0 };
+        tournamentList.forEach(t => counts[categorize(t)]++);
+
+        const rows = filtered.map(t => `
           <div class="card">
-            <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)}</h3>
-            <p class="section-sub" style="margin:0 0 8px;">${t.status==='registering'?'报名中':t.status==='running'?'进行中':'已结束'} · 门票 ${t.ticketPrice} 俱乐部积分 · 已报名 ${t.registeredCount} 人</p>
+            <h3 style="font-family:var(--font-display);font-size:20px;margin:0 0 4px;color:var(--gold-bright);">${esc(t.name)} <span class="seat-allin-tag" style="background:var(--gold);color:var(--ink);">${t.gameType==='omaha'?'Omaha':"Hold'em"}</span></h3>
+            <p class="section-sub" style="margin:0 0 8px;">${t.status==='registering'?'报名中':t.status==='running'?'进行中':'已结束'} · ${t.ticketPrice===0?'免费':'门票 '+t.ticketPrice+' 俱乐部积分'} · 已报名 ${t.registeredCount} 人</p>
             <p class="section-sub" style="margin:0 0 10px;">🥇 ${esc(t.prizes[1])}　🥈 ${esc(t.prizes[2])}　🥉 ${esc(t.prizes[3])}</p>
-            ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-reg="${t.id}">花 ${t.ticketPrice} 积分报名</button>` : ''}
+            ${t.status==='registering' ? `<button class="btn btn-primary btn-sm auto" data-reg="${t.id}">${t.ticketPrice===0?'免费报名':'花 '+t.ticketPrice+' 积分报名'}</button>` : ''}
             ${t.status==='finished' && t.results ? `<div class="hint-box">${[1,2,3].map(r=>t.results[r]?(r===1?'🥇':r===2?'🥈':'🥉')+esc(t.results[r].username):'').filter(Boolean).join('　')}</div>` : ''}
-          </div>`).join('') || '<p class="section-sub">目前没有正在报名的赛事</p>';
+          </div>`).join('') || '<p class="section-sub">这个分类下目前没有赛事</p>';
 
         app.innerHTML = `
           ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
@@ -245,12 +417,256 @@
             <p class="section-sub">${account ? '俱乐部积分：<strong style="color:var(--gold-bright);">'+accountClubPoints+'</strong>' : '登录账号后才能报名，请先返回登录'}</p>
             <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="backToJoinBtn">← 返回</button></div>
           </div>
+          <div class="sub-tabs">
+            <button class="${lobbyCategory==='holdem'?'active':''}" data-lobbycat="holdem">Hold'em (${counts.holdem})</button>
+            <button class="${lobbyCategory==='omaha'?'active':''}" data-lobbycat="omaha">Omaha (${counts.omaha})</button>
+            <button class="${lobbyCategory==='free'?'active':''}" data-lobbycat="free">免费比赛 (${counts.free})</button>
+          </div>
           ${rows}
         `;
         document.getElementById('backToJoinBtn').onclick = () => { viewMode='join'; render(); };
+        document.querySelectorAll('[data-lobbycat]').forEach(b=>{
+          b.onclick = () => { lobbyCategory = b.dataset.lobbycat; render(); };
+        });
         document.querySelectorAll('[data-reg]').forEach(b=>{
           b.onclick = () => registerForTournament(b.dataset.reg);
         });
+        return;
+      }
+
+      // 分支3.5：个人中心
+      if(viewMode === 'profile'){
+        const tabsHtml = `
+          <div class="sub-tabs">
+            <button class="${profileTab==='mypage'?'active':''}" data-ptab="mypage">MyPage</button>
+            <button class="${profileTab==='promotion'?'active':''}" data-ptab="promotion">Promotion</button>
+            <button class="${profileTab==='gamesetting'?'active':''}" data-ptab="gamesetting">GameSetting</button>
+            <button class="${profileTab==='reward'?'active':''}" data-ptab="reward">Reward</button>
+          </div>`;
+
+        let tabBody = '<p class="section-sub">正在加载…</p>';
+        if(profileTab === 'mypage' && profileData){
+          const p = profileData;
+          const avatarGrid = AVATAR_CHOICES.map(a => `<button class="avatar-choice ${a===p.avatar?'picked':''}" data-avatar="${esc(a)}" ${profileBusy?'disabled':''}>${a}</button>`).join('');
+          const historyRows = (p.history||[]).slice(0,20).map(h => `
+            <div class="showdown-row">
+              <span>${new Date(h.time).toLocaleString('zh-CN')} · ${esc(h.note||'')}</span>
+              <span style="color:${h.delta>=0?'var(--gold-bright)':'var(--burgundy-bright)'};">${h.delta>=0?'+':''}${h.delta}　余额 ${h.balance}</span>
+            </div>`).join('') || '<p class="section-sub">还没有交易记录</p>';
+          const couponRows = (p.coupons||[]).map(c => `
+            <div class="showdown-row"><span>${esc(c.code)}</span><span>+${c.amount} · ${new Date(c.time).toLocaleDateString('zh-CN')}</span></div>`).join('') || '<p class="section-sub">还没有兑换过优惠券</p>';
+
+          tabBody = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">头像 ${p.tier && p.tier!=='none' ? '<span class="seat-allin-tag" style="background:var(--gold);color:var(--ink);">'+p.tier+'</span>' : ''}</h2>
+              <p class="section-sub">当前头像：<span style="font-size:22px;">${p.avatar}</span></p>
+              <div class="avatar-grid">${avatarGrid}</div>
+            </div>
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">我的余额</h2>
+              <div class="stat-row-2">
+                <div><div class="big-num">${p.points}</div><div class="section-sub" style="margin:0;">筹码积分</div></div>
+                <div><div class="big-num">${p.clubPoints}</div><div class="section-sub" style="margin:0;">俱乐部积分</div></div>
+              </div>
+              <p class="hint-box" style="margin-top:12px;">这里只显示余额，没有充值/提现功能——筹码积分靠打现金桌赢得，俱乐部积分靠管理员发放或兑换码获得。</p>
+            </div>
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">交易记录</h2>
+              ${historyRows}
+            </div>
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">优惠券兑换</h2>
+              <div class="field"><label>兑换码</label><input type="text" id="couponInput" placeholder="输入兑换码" style="text-transform:uppercase;"></div>
+              <div class="btn-row"><button class="btn btn-primary auto" id="redeemBtn" ${profileBusy?'disabled':''}>兑换</button></div>
+              <div style="margin-top:14px;">${couponRows}</div>
+            </div>`;
+        } else if(profileTab === 'promotion'){
+          if(!promotionData) refreshPromotion();
+          const promo = promotionData;
+          const announcementHtml = (promo && promo.announcement && promo.announcement.title) ? `
+            <div class="card">
+              <h2 class="section-title">📢 ${esc(promo.announcement.title)}</h2>
+              <p class="section-sub" style="white-space:pre-wrap;">${esc(promo.announcement.body)}</p>
+            </div>` : '';
+
+          const pkgRows = (promo && promo.packages || []).map(p => `
+            <div class="showdown-row">
+              <span>¥${p.amountRMB}</span>
+              <span>${p.tickets>0?p.tickets+' 张门票　':''}${p.clubPoints>0?'+'+p.clubPoints+' 俱乐部积分　':''}${esc(p.note||'')}</span>
+            </div>`).join('');
+          const packagesHtml = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">💰 充值套餐</h2>
+              <p class="section-sub">系统不直接收款——转账给俱乐部管理员后，报上你的账号名，管理员会在后台给你加对应的门票/积分。</p>
+              ${pkgRows || '<p class="section-sub">目前没有充值套餐。</p>'}
+            </div>`;
+
+          const tiers = (promo && promo.tiers) || {};
+          const myTier = (profileData && profileData.tier) || 'none';
+          const tiersHtml = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">⭐ 会员等级</h2>
+              <p class="section-sub">我的等级：<strong style="color:var(--gold-bright);">${myTier==='none'?'普通用户':myTier}</strong></p>
+              ${tiers.VIP ? `<div class="hint-box" style="margin-bottom:10px;"><strong style="color:var(--gold-bright);">VIP</strong>　${esc(tiers.VIP)}</div>` : ''}
+              ${tiers.SVIP ? `<div class="hint-box"><strong style="color:var(--gold-bright);">SVIP</strong>　${esc(tiers.SVIP)}</div>` : ''}
+              ${(!tiers.VIP && !tiers.SVIP) ? '<p class="section-sub">目前没有会员等级说明。</p>' : ''}
+              <p class="section-sub" style="margin-top:10px;">升级会员同样需要联系俱乐部管理员线下办理。</p>
+            </div>`;
+
+          const notifyOn = getSetting('notifyNewTournaments', false);
+          const notifyHtml = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">🔔 订阅赛事通知</h2>
+              <p class="section-sub">开启后，只要保持这个页面开着（浏览器允许通知的情况下），一有新赛事开放报名就会弹通知提醒你，不需要一直盯着看。</p>
+              <div class="setting-row">
+                <div>新赛事开放报名提醒</div>
+                <label class="switch"><input type="checkbox" id="setNotify" ${notifyOn?'checked':''}><span></span></label>
+              </div>
+            </div>`;
+
+          tabBody = announcementHtml + packagesHtml + tiersHtml + notifyHtml;
+        } else if(profileTab === 'gamesetting'){
+          const hintOn = getSetting('showHandHint', true);
+          const quickRaiseOn = getSetting('showQuickRaise', true);
+          const soundOn = getSetting('soundOn', true);
+          const curLang = getStrSetting('lang', 'zh');
+          const curTheme = getStrSetting('theme', 'emerald');
+          const THEMES = [
+            {id:'emerald', label:curLang==='en'?'Emerald':'翡翠绿', color:'#184a37'},
+            {id:'sapphire', label:curLang==='en'?'Sapphire':'蓝宝石', color:'#164a7a'},
+            {id:'ruby', label:curLang==='en'?'Ruby':'红宝石', color:'#6e1a26'},
+            {id:'midnight', label:curLang==='en'?'Midnight':'午夜紫', color:'#2a2a52'}
+          ];
+          tabBody = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">GameSetting</h2>
+              <div class="setting-row">
+                <div><div>${t('hand_hint_setting')}</div><div class="section-sub" style="margin:0;">${curLang==='en'?'Show "Current Hand: xxx" after the flop':'翻牌后显示"当前牌型：xxx"'}</div></div>
+                <label class="switch"><input type="checkbox" id="setHint" ${hintOn?'checked':''}><span></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div>${t('quick_raise_setting')}</div><div class="section-sub" style="margin:0;">${curLang==='en'?'Show 1/4, 1/2, 3/4, Pot quick buttons':'显示 1/4池 1/2池 3/4池 满池 快捷按钮'}</div></div>
+                <label class="switch"><input type="checkbox" id="setQuickRaise" ${quickRaiseOn?'checked':''}><span></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div>${t('sound_setting')}</div><div class="section-sub" style="margin:0;">${curLang==='en'?'Turn alert, action click, win chime':'轮到你、点击操作、摊牌获胜的提示音'}</div></div>
+                <label class="switch"><input type="checkbox" id="setSound" ${soundOn?'checked':''}><span></span></label>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">${t('lang_setting')}</h2>
+              <div class="btn-row">
+                <button class="btn ${curLang==='zh'?'btn-primary':'btn-ghost'} btn-sm auto" data-lang="zh">中文</button>
+                <button class="btn ${curLang==='en'?'btn-primary':'btn-ghost'} btn-sm auto" data-lang="en">English</button>
+              </div>
+              <p class="section-sub" style="margin-top:10px;">${curLang==='en'?'Currently covers table/action UI. Profile & admin panels stay in Chinese for now.':'目前覆盖牌桌操作界面，个人中心等说明性文字暂时还是中文。'}</p>
+            </div>
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">${t('theme_setting')}</h2>
+              <div class="theme-grid">
+                ${THEMES.map(th=>`
+                  <div class="theme-swatch ${curTheme===th.id?'picked':''}" data-theme="${th.id}">
+                    <div class="dot" style="background:${th.color};"></div>
+                    <div class="label">${th.label}</div>
+                  </div>`).join('')}
+              </div>
+            </div>`;
+        } else if(profileTab === 'reward'){
+          if(!rewardsConfig) refreshRewardsConfig();
+          const p = profileData;
+          const growth = (p && p.growth) || 0;
+          const myLevel = (p && p.level) || 0;
+          const levels = (rewardsConfig && rewardsConfig.levels) || [];
+          const nextLevel = levels.find(l => l.level > myLevel);
+          const progressHtml = `
+            <div class="card">
+              <h2 class="section-title" style="font-size:20px;">我的成长值</h2>
+              <div class="stat-row-2">
+                <div><div class="big-num">${growth}</div><div class="section-sub" style="margin:0;">成长值</div></div>
+                <div><div class="big-num">Lv.${myLevel}</div><div class="section-sub" style="margin:0;">当前等级</div></div>
+              </div>
+              ${nextLevel ? `<p class="section-sub" style="margin-top:10px;">距离 Lv.${nextLevel.level}（${esc(nextLevel.rewardText)}）还差 ${Math.max(0,nextLevel.threshold-growth)} 成长值</p>` : '<p class="section-sub" style="margin-top:10px;">已经是最高等级啦</p>'}
+              <p class="hint-box" style="margin-top:10px;">成长值由实际消费换算而来（转账给俱乐部管理员后，管理员在后台帮你录入），达到门槛自动升级并发放奖励。</p>
+            </div>`;
+
+          const levelRows = levels.map(l => `
+            <div class="showdown-row">
+              <span>${myLevel>=l.level?'✅':'🔒'} Lv.${l.level}（满 ${l.threshold} 成长值）</span>
+              <span>${esc(l.rewardText)}${l.rewardClubPoints?' +'+l.rewardClubPoints+'积分':''}</span>
+            </div>`).join('') || '<p class="section-sub">管理员还没设置等级奖励</p>';
+          const levelsHtml = `<div class="card"><h2 class="section-title" style="font-size:20px;">等级奖励</h2>${levelRows}</div>`;
+
+          const shopItems = (rewardsConfig && rewardsConfig.shop) || [];
+          const shopRows = shopItems.map(s => `
+            <div class="showdown-row">
+              <span>${esc(s.name)}${s.note?'（'+esc(s.note)+'）':''} · 需要 ${s.costGrowth} 成长值</span>
+              <button class="btn btn-ghost btn-sm auto" data-shopitem="${s.id}" ${growth<s.costGrowth||profileBusy?'disabled':''}>兑换</button>
+            </div>`).join('') || '<p class="section-sub">积分商城还没有上架商品</p>';
+          const shopHtml = `<div class="card"><h2 class="section-title" style="font-size:20px;">积分商城</h2>${shopRows}</div>`;
+
+          const rewards = (p && p.rewards) || [];
+          const rewardRows = rewards.map(r => {
+            let left, right;
+            if(r.kind === 'level'){ left = '⭐ Lv.'+r.level+' 升级奖励'; right = esc(r.prize); }
+            else if(r.kind === 'shop'){ left = '🛍️ 商城兑换'; right = esc(r.prize); }
+            else { const medal={1:'🥇',2:'🥈',3:'🥉'}; left = (medal[r.rank]||'')+' '+esc(r.tournamentName||''); right = esc(r.prize); }
+            return `<div class="showdown-row"><span>${left}</span><span>${right} · ${new Date(r.time).toLocaleDateString('zh-CN')}</span></div>`;
+          }).join('') || '<p class="section-sub">还没有获奖记录，去参加锦标赛或者升级试试！</p>';
+          const rewardListHtml = `<div class="card"><h2 class="section-title" style="font-size:20px;">我的获奖记录</h2>${rewardRows}</div>`;
+
+          tabBody = progressHtml + levelsHtml + shopHtml + rewardListHtml;
+        }
+
+        app.innerHTML = `
+          ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
+          <div class="card">
+            <div class="btn-row"><button class="btn btn-ghost btn-sm auto" id="backToJoinBtn2">← 返回</button></div>
+          </div>
+          ${tabsHtml}
+          ${tabBody}
+        `;
+        document.getElementById('backToJoinBtn2').onclick = () => { viewMode='join'; render(); };
+        document.querySelectorAll('[data-ptab]').forEach(b=>{
+          b.onclick = () => {
+            profileTab = b.dataset.ptab;
+            if(profileTab==='promotion') refreshPromotion();
+            else if(profileTab==='reward') refreshRewardsConfig();
+            else render();
+          };
+        });
+        document.querySelectorAll('[data-avatar]').forEach(b=>{
+          b.onclick = () => changeAvatar(b.dataset.avatar);
+        });
+        document.querySelectorAll('[data-shopitem]').forEach(b=>{
+          b.onclick = () => redeemShopItem(b.dataset.shopitem);
+        });
+        const redeemBtn = document.getElementById('redeemBtn');
+        if(redeemBtn) redeemBtn.onclick = () => redeemCoupon(document.getElementById('couponInput').value.trim());
+        const setHint = document.getElementById('setHint');
+        if(setHint) setHint.onchange = () => setSetting('showHandHint', setHint.checked);
+        const setQuickRaise = document.getElementById('setQuickRaise');
+        if(setQuickRaise) setQuickRaise.onchange = () => setSetting('showQuickRaise', setQuickRaise.checked);
+        const setSound = document.getElementById('setSound');
+        if(setSound) setSound.onchange = () => { setSetting('soundOn', setSound.checked); if(setSound.checked) playTone(440,0.12); };
+        document.querySelectorAll('[data-lang]').forEach(b=>{
+          b.onclick = () => { setStrSetting('lang', b.dataset.lang); render(); };
+        });
+        document.querySelectorAll('[data-theme]').forEach(b=>{
+          b.onclick = () => { applyTheme(b.dataset.theme); render(); };
+        });
+        const setNotify = document.getElementById('setNotify');
+        if(setNotify) setNotify.onchange = async () => {
+          if(setNotify.checked){
+            if(!('Notification' in window)){ alert('你的浏览器不支持通知功能'); setNotify.checked=false; return; }
+            const perm = await Notification.requestPermission();
+            if(perm !== 'granted'){ alert('没有获得通知权限，无法开启提醒'); setNotify.checked=false; return; }
+            setSetting('notifyNewTournaments', true);
+            startTournamentNotifyWatcher();
+          } else {
+            setSetting('notifyNewTournaments', false);
+            stopTournamentNotifyWatcher();
+          }
+        };
         return;
       }
 
@@ -259,22 +675,23 @@
 
       const accountBlock = account ? `
         <div class="card">
-          <h2 class="section-title" style="font-size:20px;">已登录</h2>
+          <h2 class="section-title" style="font-size:20px;">${t('logged_in')}</h2>
           <p class="section-sub">账号：<strong style="color:var(--cream);">${esc(account.username)}</strong>　筹码积分：<strong style="color:var(--gold-bright);">${accountPoints}</strong>　俱乐部积分：<strong style="color:var(--gold-bright);">${accountClubPoints}</strong></p>
           <p class="section-sub">加入房间时会自动带上这个身份和积分作为筹码，掉线时会自动进入托管（能过牌就过牌，否则弃牌），重新连上就恢复正常。</p>
           <div class="btn-row">
-            <button class="btn btn-ghost btn-sm auto" id="viewTournamentsBtn">🏆 查看锦标赛</button>
-            <button class="btn btn-ghost btn-sm auto" id="logoutBtn">退出登录</button>
+            <button class="btn btn-ghost btn-sm auto" id="viewProfileBtn">${t('profile_btn')}</button>
+            <button class="btn btn-ghost btn-sm auto" id="viewTournamentsBtn">${t('tournaments_btn')}</button>
+            <button class="btn btn-ghost btn-sm auto" id="logoutBtn">${t('logout_btn')}</button>
           </div>
         </div>` : `
         <div class="card">
-          <h2 class="section-title" style="font-size:20px;">账号登录（可选）</h2>
+          <h2 class="section-title" style="font-size:20px;">${t('account_login')}</h2>
           <p class="section-sub">登录后积分会持久保存在服务器上，下次登录还能接着用；不登录也可以直接以访客身份加入，但积分不会保留，也无法参加锦标赛。</p>
-          <div class="field"><label>用户名</label><input type="text" id="authUser" maxlength="20"></div>
-          <div class="field"><label>密码</label><input type="password" id="authPass" maxlength="40"></div>
+          <div class="field"><label>${t('username')}</label><input type="text" id="authUser" maxlength="20"></div>
+          <div class="field"><label>${t('password')}</label><input type="password" id="authPass" maxlength="40"></div>
           <div class="btn-row">
-            <button class="btn btn-primary auto" id="loginBtn">登录</button>
-            <button class="btn btn-ghost auto" id="registerBtn">注册新账号</button>
+            <button class="btn btn-primary auto" id="loginBtn">${t('login_btn')}</button>
+            <button class="btn btn-ghost auto" id="registerBtn">${t('register_btn')}</button>
           </div>
         </div>`;
 
@@ -282,11 +699,11 @@
         ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
         ${accountBlock}
         <div class="card">
-          <h2 class="section-title">加入牌局</h2>
+          <h2 class="section-title">${t('join_room')}</h2>
           <p class="section-sub">向房主索要 6 位房间码即可加入。你的手机屏幕只会显示你自己的底牌。</p>
-          <div class="field"><label>房间码</label><input type="text" id="roomInput" value="${esc(lastRoom)}" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:20px;"></div>
-          ${account ? `<p class="section-sub">将以账号 <strong style="color:var(--cream);">${esc(account.username)}</strong> 身份加入</p>` : `<div class="field"><label>你的名字（访客）</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
-          <div class="btn-row"><button class="btn btn-primary" id="joinBtn">加入</button></div>
+          <div class="field"><label>${t('room_code')}</label><input type="text" id="roomInput" value="${esc(lastRoom)}" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:20px;"></div>
+          ${account ? `<p class="section-sub">将以账号 <strong style="color:var(--cream);">${esc(account.username)}</strong> 身份加入</p>` : `<div class="field"><label>${t('your_name_guest')}</label><input type="text" id="nameInput" maxlength="20" placeholder="输入姓名"></div>`}
+          <div class="btn-row"><button class="btn btn-primary" id="joinBtn">${t('join_btn')}</button></div>
         </div>`;
 
       document.getElementById('joinBtn').onclick = () => {
@@ -318,6 +735,8 @@
       if(logoutBtn) logoutBtn.onclick = logout;
       const viewTournamentsBtn = document.getElementById('viewTournamentsBtn');
       if(viewTournamentsBtn) viewTournamentsBtn.onclick = () => { viewMode='tournaments'; fetchTournamentList(); render(); };
+      const viewProfileBtn = document.getElementById('viewProfileBtn');
+      if(viewProfileBtn) viewProfileBtn.onclick = openProfile;
       return;
     }
 
@@ -345,7 +764,7 @@
     }
 
     const turnSecs = remainingSeconds(st.turnDeadline);
-    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　行动倒计时：<span id="turnCountdown">${turnSecs}</span>s` : '';
+    const potlineExtra = (st.stage!=='showdown' && turnSecs!==null) ? `　${t('action_timer')}：<span id="turnCountdown">${turnSecs}</span>s` : '';
     const communityCards = (st.community||[]).map(c=>cardHtml(c)).join('') + Array(Math.max(0,5-(st.community||[]).length)).fill('<div class="pcard empty"></div>').join('');
 
     // 以"我"为最下方，环绕椭圆桌排列座位（GGPoker 等主流客户端的经典视角）
@@ -371,12 +790,12 @@
     }).join('');
 
     const tableHtml = `
-      <div class="table-strip"><span>第 ${st.handNumber} 局 · ${STAGE_LABEL[st.stage]||st.stage}</span><span>${potlineExtra.replace('　','')}</span></div>
+      <div class="table-strip"><span>${st.gameType==='omaha'?'🂡 Omaha':"🂡 Hold'em"}　${getStrSetting('lang','zh')==='en' ? 'Hand #'+st.handNumber+' · '+stageLabel(st.stage) : '第 '+st.handNumber+' 局 · '+stageLabel(st.stage)}</span><span>${potlineExtra.replace('　','')}</span></div>
       <div class="poker-table-wrap">
         <div class="poker-table-rail">
           <div class="poker-table-felt">
             <div class="table-center">
-              <div class="table-pot"><span class="chip-ico"></span>底池 ${st.pot}${st.currentBet?'　下注 '+st.currentBet:''}</div>
+              <div class="table-pot"><span class="chip-ico"></span>${t('pot')} ${st.pot}${st.currentBet?'　'+t('current_bet')+' '+st.currentBet:''}</div>
               <div class="table-community">${communityCards}</div>
             </div>
             ${seatsHtml}
@@ -386,6 +805,11 @@
 
     let panel = '';
     if(st.stage==='showdown'){
+      if(lastSoundedShowdownHand !== st.handNumber){
+        lastSoundedShowdownHand = st.handNumber;
+        const iWon = (st.results||[]).some(r => r.winners.includes(me && me.name));
+        if(iWon) soundWin();
+      }
       const reveal = st.players.filter(p=>p.cards && p.cards.length).map(p=>`
         <div style="text-align:center;">
           <div style="font-size:11px;margin-bottom:4px;">${esc(p.name)}${p.id===playerId?' (我)':''}</div>
@@ -401,42 +825,48 @@
         <p class="section-sub" style="margin-top:10px;">${nextSecs!==null ? '<span id="nextHandCountdown">'+nextSecs+'</span> 秒后自动开始下一局…' : '等待房主开始下一局…'}</p>
       </div>`;
     } else if(me && !me.seated){
-      panel = `<div class="turn-panel"><p class="section-sub">本局你没有入座（筹码为 0 或本局未参与），请等待下一局。</p></div>`;
+      panel = `<div class="turn-panel"><p class="section-sub">${t('not_seated')}</p></div>`;
     } else if(me){
       // 手牌全程展示（只要你在场、没弃牌），不再只在轮到你时才显示
       const myCardsHtml = (me.cards||[]).length
-        ? `<div class="hole-cards">${me.cards.map(c=>cardHtml(c)).join('')}</div>`
+        ? `<div class="hole-cards ${me.cards.length>2?'omaha':''}">${me.cards.map(c=>cardHtml(c)).join('')}</div>`
         : '';
-      const myHandName = currentHandName([...(me.cards||[]), ...(st.community||[])]);
-      const handNameHtml = myHandName ? `<div style="font-family:var(--font-mono);font-size:12px;color:var(--gold-bright);margin-bottom:8px;">当前牌型：${esc(myHandName)}</div>` : '';
+      const myHandName = st.gameType==='omaha'
+        ? currentHandNameOmaha(me.cards||[], st.community||[])
+        : currentHandName([...(me.cards||[]), ...(st.community||[])]);
+      const handNameHtml = (myHandName && getSetting('showHandHint', true)) ? `<div style="font-family:var(--font-mono);font-size:12px;color:var(--gold-bright);margin-bottom:8px;">${t('current_hand')}${esc(myHandName)}</div>` : '';
       const isMyTurn = st.turn === st.players.indexOf(me);
+      if(isMyTurn && !me.folded && !lastTurnWasMine) soundYourTurn();
+      lastTurnWasMine = isMyTurn && !me.folded;
       let bottom;
       if(me.folded){
-        bottom = `<p class="section-sub" style="margin-top:10px;">你本局已弃牌，等待结果…</p>`;
+        bottom = `<p class="section-sub" style="margin-top:10px;">${t('you_folded')}</p>`;
       } else if(!isMyTurn){
-        bottom = `<p class="section-sub" style="margin-top:10px;">等待其他玩家行动…</p>`;
+        bottom = `<p class="section-sub" style="margin-top:10px;">${t('waiting_others')}</p>`;
       } else {
         const need = st.currentBet - me.betThisStreet;
+        const quickRaiseHtml = getSetting('showQuickRaise', true) ? `
+          <div class="pot-quick-row">
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.25">${t('quarter_pot')}</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.5">${t('half_pot')}</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="0.75">${t('three_q_pot')}</button>
+            <button class="btn btn-ghost btn-sm auto" data-frac="1">${t('full_pot')}</button>
+          </div>` : '';
         bottom = `
           <div class="action-row">
-            <button class="btn btn-danger" id="foldBtn">弃牌</button>
-            <button class="btn btn-blue" id="callBtn">${need<=0?'过牌':'跟注 '+need}</button>
-            <button class="btn btn-ghost" id="allinBtn">全下 (${me.chips})</button>
+            <button class="btn btn-danger" id="foldBtn">${t('action_fold')}</button>
+            <button class="btn btn-blue" id="callBtn">${need<=0?t('action_check'):t('action_call')+' '+need}</button>
+            <button class="btn btn-ghost" id="allinBtn">${t('action_allin')} (${me.chips})</button>
           </div>
-          <div class="pot-quick-row">
-            <button class="btn btn-ghost btn-sm auto" data-frac="0.25">1/4 池</button>
-            <button class="btn btn-ghost btn-sm auto" data-frac="0.5">1/2 池</button>
-            <button class="btn btn-ghost btn-sm auto" data-frac="0.75">3/4 池</button>
-            <button class="btn btn-ghost btn-sm auto" data-frac="1">满池</button>
-          </div>
+          ${quickRaiseHtml}
           <div class="raise-box">
-            <input type="number" id="raiseInput" placeholder="加注到…" min="${st.currentBet+1}">
-            <button class="btn btn-primary auto" id="raiseBtn">加注</button>
+            <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${st.currentBet+1}">
+            <button class="btn btn-primary auto" id="raiseBtn">${t('action_raise')}</button>
           </div>`;
       }
       panel = `
         <div class="turn-panel">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${isMyTurn && !me.folded ? '轮到你了' : '我的手牌'}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${isMyTurn && !me.folded ? t('your_turn') : t('my_hand')}</div>
           ${myCardsHtml}
           ${handNameHtml}
           ${bottom}
@@ -450,15 +880,16 @@
     `;
 
     const foldBtn = document.getElementById('foldBtn');
-    if(foldBtn) foldBtn.onclick = () => send({type:'action', action:'fold'});
+    if(foldBtn) foldBtn.onclick = () => { soundAction(); send({type:'action', action:'fold'}); };
     const callBtn = document.getElementById('callBtn');
-    if(callBtn) callBtn.onclick = () => send({type:'action', action: (st.currentBet - me.betThisStreet)<=0 ? 'check':'call'});
+    if(callBtn) callBtn.onclick = () => { soundAction(); send({type:'action', action: (st.currentBet - me.betThisStreet)<=0 ? 'check':'call'}); };
     const allinBtn = document.getElementById('allinBtn');
-    if(allinBtn) allinBtn.onclick = () => send({type:'action', action:'allin'});
+    if(allinBtn) allinBtn.onclick = () => { soundAction(); send({type:'action', action:'allin'}); };
     const raiseBtn = document.getElementById('raiseBtn');
     if(raiseBtn) raiseBtn.onclick = () => {
       const v = parseInt(document.getElementById('raiseInput').value,10);
       if(!v || v<=st.currentBet){ alert('加注金额需大于当前下注'); return; }
+      soundAction();
       send({type:'action', action:'raise', amount:v});
     };
     document.querySelectorAll('[data-frac]').forEach(b=>{
@@ -478,6 +909,8 @@
   // 尝试用本地保存的身份自动重连（同一浏览器刷新页面后不丢失座位）；
   // 若没有正在进行的房间会话，则尝试用保存的账号 token 自动恢复登录状态
   (function init(){
+    const savedTheme = getStrSetting('theme', 'emerald');
+    if(savedTheme !== 'emerald') document.body.setAttribute('data-theme', savedTheme);
     const lastRoom = prefillRoom || localStorage.getItem('poker_last_room');
     if(lastRoom){
       const saved = localStorage.getItem(storageKey(lastRoom));
@@ -495,6 +928,9 @@
         const a = JSON.parse(savedAccount);
         if(a && a.accountToken) connect(()=> send({type:'account_auth', accountToken: a.accountToken}));
       }catch(e){}
+    }
+    if(getSetting('notifyNewTournaments', false) && 'Notification' in window && Notification.permission==='granted'){
+      startTournamentNotifyWatcher();
     }
     render();
   })();
