@@ -13,8 +13,10 @@
   let pageMode = 'menu'; // menu | host | club
 
   // --- 房主模式的状态 ---
-  let roomId = localStorage.getItem('poker_host_roomId') || null;
-  let hostToken = localStorage.getItem('poker_host_token') || null;
+  let myRooms = JSON.parse(localStorage.getItem('poker_my_rooms') || '[]'); // [{roomId, hostToken, name}]，本地记住自己建过的所有牌局
+  let hostSubView = 'list'; // 'list'（牌局列表+建新牌局） | 'manage'（正在管理某一桌）
+  let roomId = null;
+  let hostToken = null;
   let lastState = null;
   let connectTimeoutTimer = null;
 
@@ -23,6 +25,8 @@
   let tournaments = [];
   let lookupResult = null;
   let clubListTimer = null;
+  let cashListTimer = null;
+  let cashTables = [];
   let promotionAdmin = { announcement:{title:'',body:''}, packages:[], tiers:{VIP:'',SVIP:''} };
   // 通用草稿存储：后台页面每 4 秒自动刷新赛事列表会重画整个页面，
   // 任何输入框正在打的字都要用这个记下来，重画时填回去，不会被冲掉。
@@ -99,16 +103,23 @@
     };
   }
 
+  function saveMyRooms(){ localStorage.setItem('poker_my_rooms', JSON.stringify(myRooms)); }
+
   function send(obj){ if(ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
 
   function handleMessage(msg){
     if(msg.type === 'host_created'){
       roomId = msg.roomId; hostToken = msg.hostToken;
-      localStorage.setItem('poker_host_roomId', roomId);
-      localStorage.setItem('poker_host_token', hostToken);
+      myRooms = myRooms.filter(r => r.roomId !== roomId);
+      myRooms.unshift({ roomId, hostToken, name: msg.roomName || roomId });
+      saveMyRooms();
+      hostSubView = 'manage';
       lastError = null; render();
     } else if(msg.type === 'state'){
-      lastState = msg; lastError = null; clearTimeout(connectTimeoutTimer); render();
+      lastState = msg; lastError = null; clearTimeout(connectTimeoutTimer);
+      const idx = myRooms.findIndex(r => r.roomId === roomId);
+      if(idx !== -1 && msg.name && myRooms[idx].name !== msg.name){ myRooms[idx].name = msg.name; saveMyRooms(); }
+      render();
     } else if(msg.type === 'error'){
       lastError = msg.message; render();
     }
@@ -166,17 +177,46 @@
   function createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount){
     connect(()=> send({type:'host_create', roomName:name, smallBlind:sb, bigBlind:bb, startingChips:chips, turnTimeLimit:timer, isPublic, maxPlayers, botCount}));
   }
+  function manageRoom(r){
+    roomId = r.roomId; hostToken = r.hostToken; lastState = null; lastError = null;
+    hostSubView = 'manage';
+    render();
+    connect(()=> send({type:'host_auth', roomId, hostToken}));
+  }
+  function removeMyRoom(rid){
+    myRooms = myRooms.filter(r => r.roomId !== rid);
+    saveMyRooms();
+    render();
+  }
   function doResetHost(){
-    localStorage.removeItem('poker_host_roomId');
-    localStorage.removeItem('poker_host_token');
+    // 只是退出当前正在管理的这一桌、回到列表，不代表牌局本身被删除（真人还在里面照样能继续打）
     roomId = null; hostToken = null; lastState = null; lastError = null;
+    hostSubView = 'list';
     clearTimeout(connectTimeoutTimer);
     render();
   }
 
   function renderHost(){
-    if(!roomId || !hostToken){
+    if(hostSubView !== 'manage'){
+      const roomRows = myRooms.map(r => `
+        <div class="list-tile">
+          <div class="stakes-dot">🃏</div>
+          <div class="info">
+            <div class="title-row"><h3>${esc(r.name)}</h3></div>
+            <div class="meta">房间码 ${r.roomId}</div>
+          </div>
+          <div class="btn-row" style="margin:0;">
+            <button class="btn btn-primary btn-sm auto" data-manage="${r.roomId}">管理</button>
+            <button class="btn btn-ghost btn-sm auto" data-removeroom="${r.roomId}">移除</button>
+          </div>
+        </div>`).join('') || '<p class="section-sub">你还没创建过牌局，在下面建一个吧。</p>';
+
       return `
+        <div class="card">
+          <h2 class="section-title" style="font-size:20px;">我的牌局</h2>
+          <p class="section-sub">"移除"只是从这个列表里去掉记录，牌局本身（如果还有人在打）不会受影响；真要关掉一桌，去俱乐部后台的"现金桌监控"强制关闭。</p>
+        </div>
+        ${roomRows}
         <div class="card">
           <h2 class="section-title">创建新牌局</h2>
           <p class="section-sub">生成房间码后，把码和加入地址发给朋友，让他们在自己手机上打开加入；如果勾选"公开"，玩家也能在自己的大厅页面里直接找到这桌，不用等你发链接。</p>
@@ -205,10 +245,10 @@
       const stuckMsg = lastError
         ? `<div class="err-box">${esc(lastError)}</div>
            <p class="section-sub">这通常是因为服务器重启过、之前的房间已经不存在了。点下面按钮清除本地记录，重新创建一个新房间。</p>
-           <div class="btn-row"><button class="btn btn-primary" id="resetBtn">清除记录并重新创建</button></div>`
+           <div class="btn-row"><button class="btn btn-primary" id="resetBtn">返回牌局列表</button></div>`
         : `<p class="section-sub">${connHint}</p>
            <p class="section-sub" id="timeoutHint" style="display:none;">一直连不上？免费版服务器如果休眠了，首次唤醒可能要等 30 秒左右，请再耐心等等；如果等了很久还不行，点下面按钮重新创建房间。</p>
-           <div class="btn-row" id="timeoutBtnRow" style="display:none;"><button class="btn btn-ghost" id="resetBtn2">清除记录并重新创建</button></div>`;
+           <div class="btn-row" id="timeoutBtnRow" style="display:none;"><button class="btn btn-ghost" id="resetBtn2">返回牌局列表</button></div>`;
       setTimeout(()=>{
         if(!lastError){
           clearTimeout(connectTimeoutTimer);
@@ -277,6 +317,7 @@
     return `
       ${errHtml}
       <div class="card">
+        <div class="btn-row" style="margin-bottom:10px;"><button class="btn btn-ghost btn-sm auto" id="backToListBtn">← 返回牌局列表</button></div>
         <h2 class="section-title">${esc(st.name)}</h2>
         <div class="room-code">${roomId}</div>
         <p class="section-sub" style="text-align:center;">把房间码或下面的链接发给朋友，用手机浏览器打开加入</p>
@@ -333,10 +374,21 @@
       const botCount = Math.min(8, Math.max(0, parseInt(document.getElementById('rBotCount').value,10)||0));
       createRoom(name, sb, bb, chips, timer, isPublic, maxPlayers, botCount);
     };
+    document.querySelectorAll('[data-manage]').forEach(b=>{
+      b.onclick = () => {
+        const r = myRooms.find(x => x.roomId === b.dataset.manage);
+        if(r) manageRoom(r);
+      };
+    });
+    document.querySelectorAll('[data-removeroom]').forEach(b=>{
+      b.onclick = () => { if(confirm('从列表里移除这条记录？（不会影响牌局本身）')) removeMyRoom(b.dataset.removeroom); };
+    });
     const resetBtn = document.getElementById('resetBtn');
     if(resetBtn) resetBtn.onclick = doResetHost;
     const resetBtn2 = document.getElementById('resetBtn2');
     if(resetBtn2) resetBtn2.onclick = doResetHost;
+    const backToListBtn = document.getElementById('backToListBtn');
+    if(backToListBtn) backToListBtn.onclick = doResetHost;
     const copyBtn = document.getElementById('copyBtn');
     if(copyBtn) copyBtn.onclick = () => {
       const input = document.getElementById('joinUrlInput');
@@ -369,6 +421,13 @@
       const r = await apiGet('/api/admin/tournaments');
       tournaments = r.tournaments; lastError = null;
     }catch(e){ lastError = e.message; }
+    render();
+  }
+  async function refreshCashTables(){
+    try{
+      const r = await apiGet('/api/admin/tables');
+      cashTables = r.tables; lastError = null;
+    }catch(e){ /* 静默失败，不打扰 */ }
     render();
   }
   async function refreshPromotionAdmin(){
@@ -406,6 +465,7 @@
     }
 
     if(!clubListTimer) clubListTimer = setInterval(refreshTournaments, 4000);
+    if(!cashListTimer) cashListTimer = setInterval(refreshCashTables, 4000);
 
     const tourneyRows = tournaments.map(t => `
       <div class="card">
@@ -422,6 +482,17 @@
           ${[1,2,3].map(r => t.results[r] ? `<div class="showdown-row"><span>${r===1?'🥇冠军':r===2?'🥈亚军':'🥉季军'} ${esc(t.results[r].username)}</span><span>${esc(t.results[r].prize)}</span></div>` : '').join('')}
         </div>` : ''}
       </div>`).join('') || '<p class="section-sub">还没有创建任何赛事</p>';
+
+    const cashTableRows = cashTables.map(c => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+          <div>
+            <h3 style="font-family:var(--font-display);font-size:19px;margin:0 0 4px;color:var(--cream);">${esc(c.name)} ${c.isPublic?'<span class="chip-badge teal">公开</span>':'<span class="chip-badge muted">私密</span>'}</h3>
+            <p class="section-sub" style="margin:0;">盲注 ${c.smallBlind}/${c.bigBlind} · 在座 ${c.playerCount}/${c.maxPlayers}（真人 ${c.humanCount} · 机器人 ${c.botCount}）· ${c.connectedCount>0?'<span class="chip-badge live"><span class="dot"></span>'+c.connectedCount+' 人在线</span>':'<span class="chip-badge muted">无人在线</span>'} · 第 ${c.handNumber} 局 · ${STAGE_LABEL[c.stage]||c.stage}</p>
+          </div>
+          <button class="btn btn-danger btn-sm auto" data-closetable="${c.id}">强制关闭</button>
+        </div>
+      </div>`).join('') || '<p class="section-sub">目前没有任何现金桌</p>';
 
     return `
       ${lastError?`<div class="err-box">${esc(lastError)}</div>`:''}
@@ -549,6 +620,12 @@
 
       <div class="card"><h2 class="section-title">赛事列表</h2></div>
       ${tourneyRows}
+
+      <div class="card">
+        <h2 class="section-title">现金桌监控</h2>
+        <p class="section-sub">这里能看到服务器上所有现金桌（不管公开还是私密），没人在线又没真人在打的桌子会自动清理，这里也能手动强制关闭。</p>
+      </div>
+      ${cashTableRows}
     `;
   }
 
@@ -564,6 +641,7 @@
         localStorage.setItem('pokergo_admin_token', adminToken);
         clubBusy = false;
         await refreshTournaments();
+        await refreshCashTables();
         await refreshPromotionAdmin();
         await refreshLevelsAdmin();
         await refreshShopAdmin();
@@ -736,6 +814,16 @@
         render();
       };
     });
+    document.querySelectorAll('[data-closetable]').forEach(b=>{
+      b.onclick = async () => {
+        if(!confirm('确认强制关闭这桌吗？桌上还连着的人会看到提示并断开，这个操作不能撤销。')) return;
+        try{
+          await apiPost('/api/admin/tables/' + encodeURIComponent(b.dataset.closetable) + '/close', {});
+          lastError = null;
+        }catch(e){ lastError = e.message; }
+        await refreshCashTables();
+      };
+    });
   }
 
   // ==================== 总渲染入口 ====================
@@ -766,7 +854,7 @@
     const goHostBtn = document.getElementById('goHostBtn');
     if(goHostBtn) goHostBtn.onclick = () => { pageMode='host'; lastError=null; render(); if(roomId && hostToken) connect(()=> send({type:'host_auth', roomId, hostToken})); };
     const goClubBtn = document.getElementById('goClubBtn');
-    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken){ refreshTournaments(); refreshPromotionAdmin(); refreshLevelsAdmin(); refreshShopAdmin(); } };
+    if(goClubBtn) goClubBtn.onclick = () => { pageMode='club'; lastError=null; render(); if(adminToken){ refreshTournaments(); refreshPromotionAdmin(); refreshLevelsAdmin(); refreshShopAdmin(); refreshCashTables(); } };
 
     if(pageMode==='host') bindHostEvents();
     if(pageMode==='club') bindClubEvents();
