@@ -240,9 +240,11 @@ app.get('/api/tables', (req, res) => {
     list.push({
       id: r.id,
       name: r.name,
+      gameType: r.gameType || 'holdem',
       smallBlind: r.smallBlind,
       bigBlind: r.bigBlind,
       startingChips: r.startingChips,
+      minBuyIn: r.minBuyIn || Math.round(r.startingChips * 0.2),
       playerCount: r.players.length,
       maxPlayers: r.maxPlayers || 9,
       stage: r.stage
@@ -302,7 +304,7 @@ const AUTO_PILOT_DELAY_MS = 3000;     // 掉线玩家轮到自己时，托管代
 function broadcastRoom(room) {
   scheduleTurnTimer(room);
   scheduleAutoNextHand(room);
-  syncPointsOnShowdown(room);
+  checkRebuyNeeded(room);
   handleTournamentTable(room);
   if (room.hostWs) send(room.hostWs, serializeForViewer(room, '__host__'));
   room.players.forEach(p => { if (p.ws) send(p.ws, serializeForViewer(room, p.id)); });
@@ -327,13 +329,15 @@ function handleTournamentTable(room) {
 }
 
 // 摊牌结算后，把有账号的玩家当前筹码同步写回账号积分（每一局只同步一次）
-function syncPointsOnShowdown(room) {
-  if (room.tournamentId) return; // 锦标赛桌的筹码是比赛用的，不同步覆盖账户积分
+function checkRebuyNeeded(room) {
+  if (room.tournamentId) return; // 锦标赛桌走自己的淘汰逻辑，不涉及买入
   if (room.stage !== 'showdown') return;
-  if (room._pointsSyncedHand === room.handNumber) return;
-  room._pointsSyncedHand = room.handNumber;
+  if (room._rebuyCheckedHand === room.handNumber) return;
+  room._rebuyCheckedHand = room.handNumber;
   room.players.forEach(p => {
-    if (p.accountUsername) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+    if (!p.isBot && p.accountUsername && p.chips <= 0 && !p.pendingLeave) {
+      p.needsRebuy = true;
+    }
   });
 }
 
@@ -424,7 +428,7 @@ function cleanupBeforeDeal(room) {
     }
   });
   toKick.forEach(p => {
-    if (p.accountUsername) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+    if (p.accountUsername && p.chips > 0) accounts.adjustClubPoints(p.accountUsername, p.chips, '离桌结算：' + room.name).catch(e => console.error('积分同步失败:', e.message));
   });
   if (toKick.length) {
     const kickIds = new Set(toKick.map(p => p.id));
@@ -553,6 +557,8 @@ async function handleMessage(ws, msg) {
         turnTimeLimit: Math.max(0, parseInt(msg.turnTimeLimit, 10) || 0),
         isPublic: !!msg.isPublic,
         maxPlayers: Math.min(9, Math.max(2, parseInt(msg.maxPlayers, 10) || 9)),
+        gameType: msg.gameType === 'omaha' ? 'omaha' : 'holdem',
+        minBuyIn: Math.max(1, parseInt(msg.minBuyIn, 10) || Math.round(Math.max(20, parseInt(msg.startingChips, 10) || 1000) * 0.2)),
         players: [],
         stage: 'lobby',
         community: [],
@@ -597,10 +603,15 @@ async function handleMessage(ws, msg) {
       if (msg.accountToken) {
         const acc = await accounts.authToken(msg.accountToken);
         if (!acc) { send(ws, { type: 'error', message: '登录状态已失效，请重新登录后再加入' }); return; }
-        if (acc.clubPoints <= 0) { send(ws, { type: 'error', message: '积分为 0，无法入座，请先获取积分（充值套餐/优惠券/管理员发放）' }); return; }
         if (room.players.some(p => p.accountUsername === acc.username)) { send(ws, { type: 'error', message: '该账号已经在本房间中' }); return; }
+        const minBuyIn = room.minBuyIn || Math.round(room.startingChips * 0.2);
+        const buyIn = Math.floor(msg.buyIn) || minBuyIn;
+        if (buyIn < minBuyIn) { send(ws, { type: 'error', message: '买入至少需要 ' + minBuyIn + ' 积分' }); return; }
+        if (buyIn > acc.clubPoints) { send(ws, { type: 'error', message: '积分余额不足（需要 ' + buyIn + '，当前 ' + acc.clubPoints + '）' }); return; }
+        const pay = await accounts.adjustClubPoints(acc.username, -buyIn, '现金桌买入：' + room.name);
+        if (pay.error) { send(ws, { type: 'error', message: pay.error }); return; }
         accountUsername = acc.username;
-        startChips = acc.clubPoints;
+        startChips = buyIn;
       }
 
       const name = accountUsername || (msg.name || '').trim().slice(0, 20) || ('玩家' + (room.players.length + 1));
@@ -638,17 +649,45 @@ async function handleMessage(ws, msg) {
       if (!room) { send(ws, { type: 'error', message: '房间不存在' }); return; }
       const p = room.players.find(x => x.id === ws.playerId);
       if (!p) { send(ws, { type: 'error', message: '找不到你的座位' }); return; }
-      if (p.accountUsername && !room.tournamentId) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
-      if (room.stage === 'lobby' || room.stage === 'showdown' || p.folded || p.allIn) {
+      // 已经弃牌 / 在等待开局 / 已经摊牌结束：这几种情况筹码数已经"定型"，可以立刻结算并移除。
+      // 但如果还在全下等结果（可能之后还会赢边池）或者还没轮到自己决定，
+      // 立刻移除会导致后续赢的钱没地方去，所以要等这手牌真正结束再统一处理。
+      const safeNow = room.stage === 'lobby' || room.stage === 'showdown' || p.folded;
+      if (safeNow) {
+        if (p.accountUsername && !room.tournamentId && p.chips > 0) accounts.adjustClubPoints(p.accountUsername, p.chips, '离桌结算：' + room.name).catch(e => console.error('积分同步失败:', e.message));
         room.players = room.players.filter(x => x.id !== p.id);
       } else {
-        // 手牌进行中且还没弃牌/全下：先帮他自动弃牌，等这手牌结束（下一手发牌前）再正式移出座位，
-        // 这样不会打断正在进行的这手牌的下注结构。
-        applyAction(room, p.id, 'fold', null);
+        if (!p.allIn) applyAction(room, p.id, 'fold', null);
         p.pendingLeave = true;
       }
       ws.roomId = null; ws.playerId = null;
       send(ws, { type: 'left_table' });
+      broadcastRoom(room);
+      break;
+    }
+    case 'rebuy': {
+      const room = rooms.get(ws.roomId);
+      if (!room) { send(ws, { type: 'error', message: '房间不存在' }); return; }
+      if (room.tournamentId) { send(ws, { type: 'error', message: '锦标赛桌不支持重新买入' }); return; }
+      const p = room.players.find(x => x.id === ws.playerId);
+      if (!p) { send(ws, { type: 'error', message: '找不到你的座位' }); return; }
+      if (!p.accountUsername) { send(ws, { type: 'error', message: '访客身份无法买入积分，请先登录账号' }); return; }
+      if (p.chips > 0) { send(ws, { type: 'error', message: '你还有筹码，暂时不需要买入' }); return; }
+      const minBuyIn = room.minBuyIn || Math.round(room.startingChips * 0.2);
+      const amount = Math.floor(msg.amount) || minBuyIn;
+      if (amount < minBuyIn) { send(ws, { type: 'error', message: '买入至少需要 ' + minBuyIn + ' 积分' }); return; }
+      const info = await accounts.getAccountInfo(p.accountUsername);
+      if (!info || info.clubPoints < amount) {
+        send(ws, { type: 'error', message: '积分余额不足（需要 ' + amount + '，当前 ' + (info ? info.clubPoints : 0) + '），已将你移出座位' });
+        room.players = room.players.filter(x => x.id !== p.id);
+        ws.roomId = null; ws.playerId = null;
+        broadcastRoom(room);
+        return;
+      }
+      const pay = await accounts.adjustClubPoints(p.accountUsername, -amount, '现金桌重新买入：' + room.name);
+      if (pay.error) { send(ws, { type: 'error', message: pay.error }); return; }
+      p.chips = amount;
+      p.needsRebuy = false;
       broadcastRoom(room);
       break;
     }
@@ -664,6 +703,10 @@ async function handleMessage(ws, msg) {
     }
     case 'host_kick': {
       const room = requireHost(ws); if (!room) return;
+      const kicked = room.players.find(p => p.id === msg.playerId);
+      if (kicked && kicked.accountUsername && !room.tournamentId && kicked.chips > 0) {
+        accounts.adjustClubPoints(kicked.accountUsername, kicked.chips, '被房主移出：' + room.name).catch(e => console.error('积分同步失败:', e.message));
+      }
       room.players = room.players.filter(p => p.id !== msg.playerId);
       broadcastRoom(room);
       break;
@@ -706,7 +749,8 @@ function handleDisconnect(ws) {
     const p = room.players.find(x => x.id === ws.playerId);
     if (p) {
       p.connected = false; p.ws = null;
-      if (p.accountUsername && !room.tournamentId) accounts.setClubPoints(p.accountUsername, p.chips).catch(e => console.error('积分同步失败:', e.message));
+      // 断线先不结算积分——重连有一整轮的宽限期，真正被踢出时（cleanupBeforeDeal）才统一结算，
+      // 避免"断线一下就被扣走桌上筹码，回来发现打的牌全没了"这种体验。
       const idx = room.players.indexOf(p);
       if (room.turn === idx) room._scheduledTurn = null; // 强制重新排计时器，走托管快速通道
     }
