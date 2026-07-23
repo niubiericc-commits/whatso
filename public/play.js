@@ -868,7 +868,7 @@
     const n = st.players.length;
     const meIdx = st.players.findIndex(p=>p.id===playerId);
     const startIdx = meIdx>=0 ? meIdx : 0;
-    const rx=42, ry=37;
+    const rx=44, ry=41; // 半径相对整个牌桌外框（不是绒布内框），让座位落在深色轨道上，不叠在绿色绒布上
     const winnerNames = st.stage==='showdown' ? new Set((st.results||[]).flatMap(r=>r.winners)) : new Set();
     const seatsHtml = st.players.map((p,orig)=>{
       if(!p.seated && st.stage!=='showdown') return '';
@@ -908,9 +908,9 @@
               <div class="table-pot"><span class="chip-ico"></span>${t('pot')} ${st.pot}${st.currentBet?'　'+t('current_bet')+' '+st.currentBet:''}</div>
               <div class="table-community">${communityCards}</div>
             </div>
-            ${seatsHtml}
           </div>
         </div>
+        ${seatsHtml}
       </div>`;
 
     let panel = '';
