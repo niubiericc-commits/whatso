@@ -21,6 +21,7 @@ module.exports = function createTournamentModule(deps) {
       name: (opts.name || '定制锦标赛').slice(0, 40),
       gameType: opts.gameType === 'omaha' ? 'omaha' : 'holdem',
       ticketPrice: Math.max(0, parseInt(opts.ticketPrice, 10) || 0),
+      scheduledStart: opts.scheduledStart ? new Date(opts.scheduledStart).getTime() : null,
       prizes: {
         1: (opts.prize1 || '').slice(0, 60) || '冠军奖品',
         2: (opts.prize2 || '').slice(0, 60) || '亚军奖品',
@@ -48,6 +49,7 @@ module.exports = function createTournamentModule(deps) {
   function publicView(t) {
     return {
       id: t.id, name: t.name, gameType: t.gameType || 'holdem', ticketPrice: t.ticketPrice, prizes: t.prizes,
+      scheduledStart: t.scheduledStart || null,
       startingChips: t.startingChips, smallBlind: t.smallBlind, bigBlind: t.bigBlind,
       maxTableSize: t.maxTableSize, status: t.status,
       registeredCount: t.registered.length,
@@ -214,8 +216,19 @@ module.exports = function createTournamentModule(deps) {
     }
   }
 
+  // 定时检查：到了预定开始时间、报名人数够 2 人的赛事自动开赛（由 server.js 定时调用）
+  function checkScheduledStarts(ctx) {
+    const now = Date.now();
+    tournaments.forEach(t => {
+      if (t.status !== 'registering') return;
+      if (!t.scheduledStart || t.scheduledStart > now) return;
+      if (t.registered.length < 2) return; // 人数不够就先不开，继续等，避免刚好2人以下卡死
+      startTournament(t, ctx);
+    });
+  }
+
   return {
     tournaments, createTournament, listTournaments, publicView,
-    register, findAssignment, startTournament, onTableSettled, getTournamentByRoom
+    register, findAssignment, startTournament, onTableSettled, getTournamentByRoom, checkScheduledStarts
   };
 };
