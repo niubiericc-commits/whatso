@@ -434,6 +434,18 @@ function cleanupBeforeDeal(room) {
     const kickIds = new Set(toKick.map(p => p.id));
     room.players = room.players.filter(p => !kickIds.has(p.id));
   }
+  // 机器人筹码打光了：直接换一个新机器人补位，不会一直坐在那不动
+  const usedNames = new Set(room.players.map(p => p.name));
+  room.players.forEach(p => {
+    if (p.isBot && p.chips <= 0) {
+      const newName = botModule.randomBotName(usedNames);
+      usedNames.add(newName);
+      p.name = newName;
+      p.chips = botModule.randomBotStack();
+      p.folded = false; p.allIn = false; p.betThisStreet = 0; p.totalContrib = 0;
+      p.lastAction = null; p.disconnectedHandStrikes = 0;
+    }
+  });
 }
 
 function scheduleAutoNextHand(room) {
@@ -596,7 +608,17 @@ async function handleMessage(ws, msg) {
     case 'join': {
       const room = rooms.get((msg.roomId || '').toUpperCase());
       if (!room) { send(ws, { type: 'error', message: '房间不存在，请检查房间码' }); return; }
-      if (room.players.length >= 9) { send(ws, { type: 'error', message: '房间已满（最多 9 人）' }); return; }
+      const cap = room.maxPlayers || 9;
+      if (room.players.length >= cap) {
+        // 满员了：如果桌上还有机器人在占位，自动请走一个机器人给真人腾位置，
+        // 保证真人/游客永远能坐进来，不会被机器人占满。
+        const botIdx = room.players.findIndex(p => p.isBot);
+        if (botIdx !== -1) {
+          room.players.splice(botIdx, 1);
+        } else {
+          send(ws, { type: 'error', message: '房间已满（最多 ' + cap + ' 人）' }); return;
+        }
+      }
 
       let accountUsername = null;
       let startChips = room.startingChips;
