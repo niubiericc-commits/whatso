@@ -315,21 +315,33 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
   .table-pot{font-size:15px;padding:6px 18px;}
 }
 
-.seat-pos{position:absolute;transform:translate(-50%,-50%);width:68px;text-align:center;z-index:2;}
+.seat-pos{position:absolute;transform:translate(-50%,-50%);width:68px;text-align:center;z-index:2;transition:z-index 0s;}
 @media (min-width:860px){ .seat-pos{width:92px;} }
+.seat-pos.turn{z-index:7;}
 .seat-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-family:var(--font-display);font-size:18px;color:#fff;margin:0 auto;position:relative;
   border:2.5px solid rgba(255,255,255,0.25);box-shadow:0 5px 14px rgba(0,0,0,.5);}
 @media (min-width:860px){ .seat-avatar{width:58px;height:58px;font-size:24px;} }
-.seat-pos.turn .seat-avatar{border-color:var(--gold-bright);box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);animation:seat-turn-glow 1.4s infinite;}
-@keyframes seat-turn-glow{0%,100%{box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);}50%{box-shadow:0 0 0 8px rgba(255,216,115,0.15),0 5px 14px rgba(0,0,0,.5);}}
+.seat-pos.turn .seat-avatar{border-color:var(--gold-bright);border-width:3.5px;
+  box-shadow:0 0 0 5px rgba(255,216,115,0.45),0 0 26px 4px rgba(255,216,115,0.5),0 5px 14px rgba(0,0,0,.6);
+  animation:seat-turn-glow 1.1s infinite;}
+@keyframes seat-turn-glow{
+  0%,100%{box-shadow:0 0 0 5px rgba(255,216,115,0.5),0 0 26px 4px rgba(255,216,115,0.55),0 5px 14px rgba(0,0,0,.6);}
+  50%{box-shadow:0 0 0 9px rgba(255,216,115,0.2),0 0 34px 8px rgba(255,216,115,0.3),0 5px 14px rgba(0,0,0,.6);}
+}
+.seat-pos.turn::before{content:'';position:absolute;inset:-8px;border-radius:50%;border:2px dashed rgba(255,216,115,0.5);
+  animation:seat-turn-ring 6s linear infinite;pointer-events:none;}
+@keyframes seat-turn-ring{to{transform:rotate(360deg);}}
+.seat-pos.turn .seat-nameplate{background:linear-gradient(180deg,rgba(226,171,63,0.35),rgba(20,16,6,0.92));
+  border-color:var(--gold-bright);box-shadow:0 0 14px -2px rgba(255,216,115,0.5);}
+.seat-pos.turn .seat-pname{color:var(--gold-bright);}
 .seat-pos.me .seat-avatar{box-shadow:0 0 0 3px var(--blue-bright),0 5px 14px rgba(0,0,0,.5);}
 .seat-pos.folded{opacity:.32;}
 .seat-num-badge{position:absolute;top:-4px;left:-4px;width:17px;height:17px;border-radius:50%;background:var(--surface);
   border:1px solid var(--border-strong);color:var(--muted);font-family:var(--font-mono);font-size:8.5px;font-weight:700;
   display:flex;align-items:center;justify-content:center;z-index:3;}
 .seat-nameplate{background:rgba(8,16,13,0.88);border:1px solid rgba(255,255,255,0.08);border-radius:8px;
-  padding:2px 6px;margin-top:-6px;position:relative;z-index:1;}
+  padding:2px 6px;margin-top:-6px;position:relative;z-index:1;transition:background .15s,border-color .15s;}
 @media (min-width:860px){ .seat-nameplate{padding:3px 8px;margin-top:-8px;} }
 .seat-pname{font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
 @media (min-width:860px){ .seat-pname{font-size:12px;} }
@@ -351,17 +363,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 @media (min-width:860px){ .seat-bet-chip{font-size:15px;padding:6px 15px 6px 6px;} .seat-bet-chip::before{width:19px;height:19px;} }
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
 
-/* ---------- 行动提示：每次操作后短暂显示 CHECK/CALL/RAISE/FOLD ---------- */
-.action-flag{position:absolute;top:-2px;left:50%;transform:translate(-50%,-100%);z-index:5;
-  font-family:var(--font-mono);font-size:9px;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px;
-  white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.5);animation:action-flag-in .2s ease-out;}
-@keyframes action-flag-in{from{opacity:0;transform:translate(-50%,-100%) translateY(4px);}to{opacity:1;transform:translate(-50%,-100%) translateY(0);}}
-.action-flag.action-fold{background:var(--surface-2);color:var(--muted);border:1px solid var(--border-strong);}
-.action-flag.action-check{background:rgba(45,212,191,0.16);color:var(--teal-bright);border:1px solid rgba(45,212,191,0.4);}
-.action-flag.action-call{background:rgba(58,110,168,0.2);color:var(--blue-bright);border:1px solid rgba(92,143,201,0.5);}
-.action-flag.action-raise{background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--ink);}
-.action-flag.action-allin{background:linear-gradient(180deg,var(--burgundy-bright),var(--burgundy));color:#fff;}
-@media (min-width:860px){ .action-flag{font-size:11px;padding:4px 11px;} }
+/* ---------- 行动提示：每次操作后清楚地弹出 弃牌/过牌/跟注/加注/全下，明显得多，不会被忽略 ---------- */
+.action-flag{position:absolute;top:-6px;left:50%;transform:translate(-50%,-100%);z-index:9;
+  font-family:var(--font-mono);font-size:12px;font-weight:900;letter-spacing:.04em;padding:5px 13px;border-radius:999px;
+  white-space:nowrap;box-shadow:0 5px 14px rgba(0,0,0,.6);animation:action-flag-in .22s ease-out;border:2px solid rgba(255,255,255,0.25);}
+@keyframes action-flag-in{from{opacity:0;transform:translate(-50%,-100%) translateY(6px) scale(.7);}to{opacity:1;transform:translate(-50%,-100%) translateY(0) scale(1);}}
+.action-flag.action-fold{background:var(--surface-2);color:var(--muted);border-color:var(--border-strong);}
+.action-flag.action-check{background:linear-gradient(180deg,var(--teal-bright),var(--teal-deep));color:var(--ink);}
+.action-flag.action-call{background:linear-gradient(180deg,var(--blue-bright),var(--blue));color:#fff;}
+.action-flag.action-raise{background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--ink);box-shadow:0 5px 16px rgba(0,0,0,.6), 0 0 16px -2px rgba(255,216,115,0.7);}
+.action-flag.action-allin{background:linear-gradient(180deg,var(--burgundy-bright),var(--burgundy));color:#fff;box-shadow:0 5px 16px rgba(0,0,0,.6), 0 0 16px -2px rgba(224,87,106,0.7);}
+@media (min-width:860px){ .action-flag{font-size:14px;padding:6px 16px;} }
 
 /* ---------- 底池筹码飞向赢家的动画（起始位置由 JS 设置，具体移动靠 JS 切换 left/top 触发 transition） ---------- */
 .pot-fly-chip{position:absolute;width:18px;height:18px;border-radius:50%;z-index:8;pointer-events:none;
