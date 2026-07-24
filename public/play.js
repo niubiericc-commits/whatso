@@ -979,6 +979,8 @@
     if(st.stage==='showdown'){
       (st.results||[]).forEach(r=>{ r.winners.forEach(wn=>{ winnerAmounts[wn] = (winnerAmounts[wn]||0) + Math.floor(r.amount/r.winners.length); }); });
     }
+    const ACTION_LABEL = { fold:{zh:'弃牌',en:'FOLD'}, check:{zh:'过牌',en:'CHECK'}, call:{zh:'跟注',en:'CALL'}, raise:{zh:'加注',en:'RAISE'}, allin:{zh:'全下',en:'ALL IN'} };
+    const curLangForAction = getStrSetting('lang','zh');
     const seatPositions = {};
     const betChipsHtml = [];
     const seatsHtml = st.players.map((p,orig)=>{
@@ -988,7 +990,7 @@
       const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
       seatPositions[p.name] = {left, top};
       // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目；
-      // 加注/跟注这两种"主动加钱"的操作，筹码变红，一眼区分开
+      // 加注/跟注这两种"主动加钱"的操作，筹码红黄交替闪烁几下，一眼区分开
       if(p.betThisStreet>0){
         const chipLeft = left + (50-left)*0.4, chipTop = top + (48-top)*0.4;
         const isHot = p.lastAction==='raise' || p.lastAction==='call';
@@ -1004,9 +1006,11 @@
           ${p.handName ? `<div class="win-handname">${esc(p.handName)}</div>` : ''}
         </div>
         <div class="win-amount-pop">+${winnerAmounts[p.name]||0}</div>` : '';
+      const actionLabel = (!isWinner && p.lastAction && ACTION_LABEL[p.lastAction]) ? `<div class="action-flag action-${p.lastAction}">${ACTION_LABEL[p.lastAction][curLangForAction==='en'?'en':'zh']}</div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
         ${winBurstHtml}
-        <div class="seat-avatar avatar-c${orig%9}${['check','call','raise','allin'].includes(p.lastAction)?' act-flash':''}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        ${actionLabel}
+        <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
           <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="seat-allin-tag" style="background:var(--muted);color:var(--ink);">托管中</span>':''}</div>
