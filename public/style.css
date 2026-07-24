@@ -323,6 +323,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 @media (min-width:860px){ .seat-avatar{width:58px;height:58px;font-size:24px;} }
 .seat-pos.turn .seat-avatar{border-color:var(--gold-bright);box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);animation:seat-turn-glow 1.4s infinite;}
 @keyframes seat-turn-glow{0%,100%{box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);}50%{box-shadow:0 0 0 8px rgba(255,216,115,0.15),0 5px 14px rgba(0,0,0,.5);}}
+/* 过牌/跟注/加注后，头像外圈红黄交替闪烁几下，比单纯变色更抓眼球，比常驻大字标签更不占地方 */
+.seat-avatar.act-flash{animation:act-flash-ring 0.55s ease-in-out 4;}
+@keyframes act-flash-ring{
+  0%,100%{box-shadow:0 0 0 4px rgba(255,216,115,0.55),0 5px 14px rgba(0,0,0,.5);}
+  50%{box-shadow:0 0 0 5px rgba(224,87,106,0.75),0 5px 14px rgba(0,0,0,.5);}
+}
+.seat-pos.turn .seat-avatar.act-flash{animation:act-flash-ring-turn 0.55s ease-in-out 4;}
+@keyframes act-flash-ring-turn{
+  0%,100%{box-shadow:0 0 0 5px rgba(255,216,115,0.6),0 5px 14px rgba(0,0,0,.5);}
+  50%{box-shadow:0 0 0 6px rgba(224,87,106,0.8),0 5px 14px rgba(0,0,0,.5);}
+}
 .seat-pos.me .seat-avatar{box-shadow:0 0 0 3px var(--blue-bright),0 5px 14px rgba(0,0,0,.5);}
 .seat-pos.folded{opacity:.32;}
 .seat-num-badge{position:absolute;top:-4px;left:-4px;width:17px;height:17px;border-radius:50%;background:var(--surface);
