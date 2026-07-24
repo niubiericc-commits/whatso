@@ -993,7 +993,7 @@
       // 加注/跟注这两种"主动加钱"的操作，筹码红黄交替闪烁几下，一眼区分开
       if(p.betThisStreet>0){
         const chipLeft = left + (50-left)*0.4, chipTop = top + (48-top)*0.4;
-        const isHot = p.lastAction==='raise' || p.lastAction==='call';
+        const isHot = p.id === st.lastActedPlayerId && (p.lastAction==='raise' || p.lastAction==='call');
         betChipsHtml.push(`<div class="seat-bet-chip${isHot?' chip-hot':''}" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
       }
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
@@ -1107,11 +1107,11 @@
             <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${minRaiseTo}">
             <button class="btn btn-primary auto" id="raiseBtn">${t('action_raise')}</button>
           </div>
-          <p class="section-sub" style="margin-top:6px;">最低加注到 ${minRaiseTo}</p>`;
+          <p class="section-sub" style="margin-top:8px;font-family:var(--font-mono);letter-spacing:.02em;">最低加注到 <strong style="color:var(--gold-bright);">${minRaiseTo}</strong></p>`;
       }
       panel = `
         <div class="turn-panel">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${isMyTurn && !me.folded ? t('your_turn') : t('my_hand')}</div>
+          <div class="panel-label${isMyTurn && !me.folded ? ' my-turn' : ''}">${isMyTurn && !me.folded ? t('your_turn') : t('my_hand')}</div>
           ${myCardsHtml}
           ${handNameHtml}
           ${bottom}
