@@ -43,6 +43,7 @@ function dealHand(room) {
     p.cards = []; p.folded = p.chips <= 0; p.allIn = false; p.betThisStreet = 0; p.totalContrib = 0; p.lastAction = null;
   });
   room.pot = 0; room.community = []; room.stage = 'preflop'; room.results = null;
+  room.lastActedPlayerId = null;
   room.handNumber = (room.handNumber || 0) + 1;
   room.deck = shuffle(newDeck());
   const holeCount = room.gameType === 'omaha' ? 4 : 2;
@@ -133,6 +134,7 @@ function applyAction(room, playerId, action, amount) {
   if (idx === -1) return { error: '玩家不存在' };
   if (room.stage === 'lobby' || room.stage === 'showdown') return { error: '当前不在下注阶段' };
   if (room.turn !== idx) return { error: '还没轮到你行动' };
+  room.lastActedPlayerId = playerId; // 记住"最近做出决策的人"，客户端只让这一个人的筹码闪烁提示
   const p = room.players[idx];
 
   if (action === 'fold') {
@@ -228,6 +230,7 @@ function serializeForViewer(room, viewerId) {
     gameType: room.gameType || 'holdem',
     minBuyIn: room.minBuyIn || Math.round(room.startingChips * 0.2),
     log: (room.log || []).slice(0, 10),
+    lastActedPlayerId: room.lastActedPlayerId || null,
     you: viewerId,
     players: room.players.map((p, i) => {
       const seated = room.activeSeats ? room.activeSeats.includes(i) : false;
