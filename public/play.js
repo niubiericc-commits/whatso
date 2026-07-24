@@ -1006,7 +1006,7 @@
         <div class="win-amount-pop">+${winnerAmounts[p.name]||0}</div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
         ${winBurstHtml}
-        <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
+        <div class="seat-avatar avatar-c${orig%9}${['check','call','raise','allin'].includes(p.lastAction)?' act-flash':''}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
           <div class="seat-chips">${p.chips}${p.allIn?' <span class="seat-allin-tag">ALL-IN</span>':''}${!p.connected?' <span class="seat-allin-tag" style="background:var(--muted);color:var(--ink);">托管中</span>':''}</div>
