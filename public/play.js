@@ -993,7 +993,7 @@
       // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目；
       // 加注/跟注这两种"主动加钱"的操作，筹码红黄交替闪烁几下，一眼区分开
       if(p.betThisStreet>0){
-        const chipLeft = left + (50-left)*0.28, chipTop = top + (48-top)*0.28;
+        const chipLeft = left + (50-left)*0.42, chipTop = top + (48-top)*0.42;
         const isHot = p.id === st.lastActedPlayerId && (p.lastAction==='raise' || p.lastAction==='call');
         betChipsHtml.push(`<div class="seat-bet-chip${isHot?' chip-hot':''}" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
       }
@@ -1033,7 +1033,6 @@
           <div class="poker-table-felt">
             <div class="table-watermark">POKERGO</div>
             <div class="table-center">
-              <div class="table-pot"><span class="chip-ico"></span>${t('pot')} ${st.pot}${st.currentBet?'　'+t('current_bet')+' '+st.currentBet:''}</div>
               <div class="table-community">${communityCards}</div>
             </div>
           </div>
