@@ -52,6 +52,7 @@
   let lastTurnWasMine = false;
   let lastSoundedShowdownHand = null;
   let lastAnimatedShowdownHand = null;
+  let logBoxOpen = false; // 战报默认收起，点图标才展开
   let toastMsg = null;
   let toastTimer = null;
   function showToast(msg){
@@ -1039,7 +1040,11 @@
         </div>
         ${seatsHtml}
         ${betChipsHtml.join('')}
-        <div class="table-log-box">${(st.log||[]).slice(0,4).map(l=>`<div class="log-line">${esc(l.text)}</div>`).join('') || '<div class="log-line">牌局开始…</div>'}</div>
+        ${logBoxOpen ? `
+        <div class="table-log-box">
+          <span class="log-close" id="logCloseBtn">✕</span>
+          ${(st.log||[]).slice(0,4).map(l=>`<div class="log-line">${esc(l.text)}</div>`).join('') || '<div class="log-line">牌局开始…</div>'}
+        </div>` : `<div class="table-log-toggle" id="logOpenBtn">💬</div>`}
       </div>`;
 
     let panel = '';
@@ -1110,6 +1115,7 @@
       }
       panel = `
         <div class="turn-panel">
+          <div class="panel-pot-strip"><span>${t('pot')} <span class="pv">${st.pot}</span></span><span>${t('current_bet')} <span class="pv">${st.currentBet}</span></span></div>
           <div class="panel-label${isMyTurn && !me.folded ? ' my-turn' : ''}">${isMyTurn && !me.folded ? t('your_turn') : t('my_hand')}</div>
           ${myCardsHtml}
           ${handNameHtml}
@@ -1149,6 +1155,10 @@
     }
 
     const leaveTableBtn = document.getElementById('leaveTableBtn');
+    const logOpenBtn = document.getElementById('logOpenBtn');
+    if(logOpenBtn) logOpenBtn.onclick = () => { logBoxOpen = true; render(); };
+    const logCloseBtn = document.getElementById('logCloseBtn');
+    if(logCloseBtn) logCloseBtn.onclick = () => { logBoxOpen = false; render(); };
     if(leaveTableBtn) leaveTableBtn.onclick = () => {
       if(confirm('确定要离开这桌吗？如果正在进行一手牌，会先自动帮你弃牌。')) send({type:'leave_table'});
     };
