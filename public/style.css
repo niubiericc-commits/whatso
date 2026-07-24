@@ -225,6 +225,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .turn-panel .panel-label{font-family:var(--font-mono);font-size:9.5px;font-weight:700;letter-spacing:.12em;
   text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
 .turn-panel .panel-label.my-turn{color:var(--gold-bright);}
+.panel-pot-strip{display:flex;justify-content:center;gap:14px;font-family:var(--font-mono);font-size:12px;font-weight:700;
+  color:var(--cream);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.panel-pot-strip .pv{color:var(--gold-bright);}
+@media (min-width:860px){ .panel-pot-strip{font-size:14px;gap:20px;margin-bottom:10px;padding-bottom:10px;} }
 .hole-cards{display:flex;justify-content:center;margin:6px 0 7px;flex-wrap:wrap;}
 .hole-cards .pcard{width:52px;height:73px;margin:0 -6px;box-shadow:0 10px 22px rgba(0,0,0,.55);}
 .hole-cards .pcard:first-child{transform:rotate(-7deg) translateY(3px);}
@@ -298,15 +302,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 
 /* ---------- 左下角战报框：固定钉在屏幕左下角，跟牌桌图形脱钩，保证不挡住任何座位；
    底部避开固定导航栏的高度 ---------- */
-/* ---------- 左下角战报框：锚定在牌桌外框的空角落（座位是椭圆排列，角落本来就没有座位），
-   不再用 position:fixed 钉死在屏幕上——那样会跟着页面滚动跑到下面手牌操作区上面去，反而挡住手牌 ---------- */
-.table-log-box{position:absolute;left:1%;bottom:1%;z-index:3;width:34%;max-width:150px;max-height:17%;overflow-y:auto;
-  background:rgba(8,10,14,0.82);backdrop-filter:blur(6px);border:1px solid var(--border-strong);border-radius:9px;
+/* ---------- 左下角战报：默认收起成一个小图标，点一下展开/收起，避免一直占地方挡东西 ---------- */
+.table-log-toggle{position:absolute;left:0.5%;bottom:0.5%;z-index:3;width:26px;height:26px;border-radius:50%;
+  background:rgba(8,10,14,0.85);border:1px solid var(--border-strong);color:var(--gold-bright);font-size:13px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-card);}
+@media (min-width:860px){ .table-log-toggle{width:34px;height:34px;font-size:16px;left:1%;bottom:1%;} }
+.table-log-box{position:absolute;left:0.5%;bottom:0.5%;z-index:4;width:32%;max-width:145px;max-height:16%;overflow-y:auto;
+  background:rgba(8,10,14,0.85);backdrop-filter:blur(6px);border:1px solid var(--border-strong);border-radius:9px;
   padding:5px 7px;font-family:var(--font-mono);font-size:7.5px;line-height:1.55;color:var(--muted);
-  box-shadow:var(--shadow-card);scrollbar-width:thin;pointer-events:auto;}
-.table-log-box .log-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  box-shadow:var(--shadow-card);scrollbar-width:thin;}
+.table-log-box .log-close{position:absolute;top:2px;right:4px;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;}
+.table-log-box .log-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:12px;}
 .table-log-box .log-line:first-child{color:var(--gold-bright);font-weight:700;}
-@media (min-width:860px){ .table-log-box{font-size:11px;width:26%;max-width:240px;max-height:22%;padding:9px 11px;left:1.5%;bottom:1.5%;} }
+@media (min-width:860px){ .table-log-box{font-size:11px;width:25%;max-width:230px;max-height:22%;padding:9px 11px;left:1%;bottom:1%;} }
 .poker-table-wrap{position:relative;width:100%;max-width:620px;margin:0 auto 20px;aspect-ratio:4/3;}
 @media (min-width:860px){
   .poker-table-wrap{max-width:1040px;aspect-ratio:16/9;}
