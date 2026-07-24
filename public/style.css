@@ -215,9 +215,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .p-seat .betamt{font-family:var(--font-mono);color:var(--muted);font-size:10.5px;}
 .p-seat .disc{color:var(--burgundy-bright);font-size:10px;}
 
-.turn-panel{border:1px solid var(--gold);border-radius:18px;padding:18px;
+.turn-panel{border:1px solid var(--gold);border-radius:20px;padding:22px 20px;
   background:linear-gradient(180deg, rgba(226,171,63,0.10), rgba(226,171,63,0.02)), var(--bg-1);
   text-align:center;box-shadow:var(--shadow-pop);max-width:640px;margin-left:auto;margin-right:auto;}
+.turn-panel .panel-label{font-family:var(--font-mono);font-size:10.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.turn-panel .panel-label.my-turn{color:var(--gold-bright);}
 .hole-cards{display:flex;justify-content:center;margin:14px 0 16px;flex-wrap:wrap;}
 .hole-cards .pcard{width:68px;height:95px;margin:0 -8px;box-shadow:0 10px 22px rgba(0,0,0,.55);}
 .hole-cards .pcard:first-child{transform:rotate(-7deg) translateY(3px);}
@@ -229,11 +232,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .hole-cards.omaha .pcard:nth-child(3){transform:rotate(4deg);}
 .hole-cards.omaha .pcard:last-child{transform:rotate(12deg) translateY(6px);}
 .hole-cards.omaha .pcard .r{font-size:16px;} .hole-cards.omaha .pcard .s{font-size:13px;}
-.action-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;}
-.action-row .btn{width:auto;flex:1;min-width:90px;border-radius:999px;padding:14px 18px;font-size:13.5px;letter-spacing:.02em;text-transform:uppercase;font-weight:800;}
-.pot-quick-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px;}
-.pot-quick-row .btn{width:auto;flex:1;min-width:64px;}
-.bet-slider-row{margin-top:12px;padding:0 4px;}
+.action-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
+.action-row .btn{width:auto;flex:1;min-width:92px;border-radius:999px;padding:15px 18px;font-size:13px;letter-spacing:.05em;text-transform:uppercase;font-weight:800;}
+.pot-quick-row{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:12px;}
+.pot-quick-row .btn{width:auto;flex:1;min-width:64px;font-size:11.5px;letter-spacing:.02em;}
+.bet-slider-row{margin-top:14px;padding:0 4px;}
 .bet-slider-row input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;
   background:linear-gradient(90deg,var(--gold-deep),var(--gold-bright));outline:none;cursor:pointer;}
 .bet-slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;
@@ -264,7 +267,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 @keyframes toast-out{from{opacity:1;}to{opacity:0;transform:translateX(-50%) translateY(-10px);}}
 
 /* ---------- poker table (只有这里保留绒布质感——真正坐上牌桌才用) ---------- */
-.table-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+.table-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
+.balance-pill{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,var(--surface),var(--bg-1));border:1px solid var(--border-strong);
+  border-radius:999px;padding:7px 16px 7px 9px;font-family:var(--font-mono);font-weight:700;font-size:14px;letter-spacing:.01em;color:var(--gold-bright);box-shadow:var(--shadow-card);}
+.balance-pill .coin{width:20px;height:20px;border-radius:50%;flex:none;background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);box-shadow:0 0 0 2px var(--ink);}
+.table-strip{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:11px;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:11px;flex-wrap:wrap;gap:6px;padding:0 2px;}
+.table-strip span:first-child{color:var(--gold-bright);font-weight:700;}
 
 /* ---------- 左下角战报框：固定钉在屏幕左下角，跟牌桌图形脱钩，保证不挡住任何座位；
    底部避开固定导航栏的高度 ---------- */
@@ -275,10 +284,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .table-log-box .log-line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .table-log-box .log-line:first-child{color:var(--gold-bright);font-weight:700;}
 @media (min-width:860px){ .table-log-box{font-size:12px;width:min(24vw,300px);max-height:32vh;padding:11px 13px;bottom:24px;left:20px;} }
-.balance-pill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border-strong);
-  border-radius:999px;padding:6px 14px 6px 8px;font-family:var(--font-mono);font-weight:700;font-size:14px;color:var(--gold-bright);box-shadow:var(--shadow-card);}
-.balance-pill .coin{width:20px;height:20px;border-radius:50%;flex:none;background:repeating-conic-gradient(var(--gold) 0deg 45deg, var(--gold-bright) 45deg 90deg);box-shadow:0 0 0 2px var(--ink);}
-.table-strip{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:var(--gold-bright);margin-bottom:10px;flex-wrap:wrap;gap:4px;}
 .poker-table-wrap{position:relative;width:100%;max-width:620px;margin:0 auto 20px;aspect-ratio:4/3;}
 @media (min-width:860px){
   .poker-table-wrap{max-width:1040px;aspect-ratio:16/9;}
@@ -302,17 +307,17 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .table-watermark{position:absolute;font-family:var(--font-display);font-size:clamp(22px,6vw,44px);letter-spacing:.08em;
   color:rgba(255,255,255,0.05);pointer-events:none;user-select:none;white-space:nowrap;}
 .table-center{position:absolute;top:48%;left:50%;transform:translate(-50%,-50%);text-align:center;width:76%;}
-.table-pot{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-weight:700;color:var(--ink);
-  font-size:12px;margin-bottom:8px;padding:4px 14px;border-radius:999px;
-  background:linear-gradient(180deg,var(--gold-bright),var(--gold));box-shadow:0 4px 10px rgba(0,0,0,.4);white-space:nowrap;}
-.table-pot .chip-ico{width:12px;height:12px;border-radius:50%;background:repeating-conic-gradient(var(--ink) 0deg 45deg, var(--cream) 45deg 90deg);display:inline-block;box-shadow:0 0 0 1.5px var(--ink);}
+.table-pot{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-weight:800;color:var(--ink);letter-spacing:.02em;
+  font-size:12.5px;margin-bottom:10px;padding:5px 16px;border-radius:999px;
+  background:linear-gradient(180deg,var(--gold-bright),var(--gold));box-shadow:0 5px 12px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.4) inset;white-space:nowrap;}
+.table-pot .chip-ico{width:13px;height:13px;border-radius:50%;background:repeating-conic-gradient(var(--ink) 0deg 45deg, var(--cream) 45deg 90deg);display:inline-block;box-shadow:0 0 0 1.5px var(--ink);}
 .table-community{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;}
 .table-community .pcard{width:40px;height:56px;}
 .table-community .pcard .r{font-size:15px;} .table-community .pcard .s{font-size:13px;}
 @media (min-width:860px){
   .table-community .pcard{width:58px;height:81px;}
   .table-community .pcard .r{font-size:21px;} .table-community .pcard .s{font-size:18px;}
-  .table-pot{font-size:15px;padding:6px 18px;}
+  .table-pot{font-size:16px;padding:7px 20px;}
 }
 
 .seat-pos{position:absolute;transform:translate(-50%,-50%);width:68px;text-align:center;z-index:2;}
@@ -328,14 +333,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .seat-num-badge{position:absolute;top:-4px;left:-4px;width:17px;height:17px;border-radius:50%;background:var(--surface);
   border:1px solid var(--border-strong);color:var(--muted);font-family:var(--font-mono);font-size:8.5px;font-weight:700;
   display:flex;align-items:center;justify-content:center;z-index:3;}
-.seat-nameplate{background:rgba(8,16,13,0.88);border:1px solid rgba(255,255,255,0.08);border-radius:8px;
-  padding:2px 6px;margin-top:-6px;position:relative;z-index:1;}
-@media (min-width:860px){ .seat-nameplate{padding:3px 8px;margin-top:-8px;} }
-.seat-pname{font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
-@media (min-width:860px){ .seat-pname{font-size:12px;} }
-.seat-pname .me-tag{color:var(--blue-bright);}
-.seat-chips{font-size:9px;color:var(--gold-bright);font-family:var(--font-mono);}
-@media (min-width:860px){ .seat-chips{font-size:11px;} }
+.seat-nameplate{background:rgba(8,16,13,0.9);border:1px solid rgba(255,255,255,0.09);border-radius:9px;
+  padding:3px 8px 4px;margin-top:-6px;position:relative;z-index:1;box-shadow:0 3px 8px rgba(0,0,0,.35);}
+@media (min-width:860px){ .seat-nameplate{padding:4px 10px 5px;margin-top:-8px;border-radius:10px;} }
+.seat-pname{font-size:9.5px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);line-height:1.4;}
+@media (min-width:860px){ .seat-pname{font-size:12.5px;} }
+.seat-pname .me-tag{color:var(--blue-bright);font-weight:600;}
+.seat-chips{font-size:9px;color:var(--gold-bright);font-family:var(--font-mono);font-weight:600;letter-spacing:.02em;margin-top:1px;}
+@media (min-width:860px){ .seat-chips{font-size:11.5px;} }
 .seat-dealer-btn{position:absolute;top:-5px;right:-6px;width:18px;height:18px;border-radius:50%;
   background:radial-gradient(circle at 35% 30%, #fff, #d8d2c2 70%);color:var(--ink);
   font-family:var(--font-mono);font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;
