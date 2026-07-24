@@ -992,7 +992,7 @@
       // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目；
       // 加注/跟注这两种"主动加钱"的操作，筹码红黄交替闪烁几下，一眼区分开
       if(p.betThisStreet>0){
-        const chipLeft = left + (50-left)*0.4, chipTop = top + (48-top)*0.4;
+        const chipLeft = left + (50-left)*0.28, chipTop = top + (48-top)*0.28;
         const isHot = p.id === st.lastActedPlayerId && (p.lastAction==='raise' || p.lastAction==='call');
         betChipsHtml.push(`<div class="seat-bet-chip${isHot?' chip-hot':''}" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
       }
@@ -1039,7 +1039,7 @@
         </div>
         ${seatsHtml}
         ${betChipsHtml.join('')}
-        <div class="table-log-box">${(st.log||[]).map(l=>`<div class="log-line">${esc(l.text)}</div>`).join('') || '<div class="log-line">牌局开始…</div>'}</div>
+        <div class="table-log-box">${(st.log||[]).slice(0,4).map(l=>`<div class="log-line">${esc(l.text)}</div>`).join('') || '<div class="log-line">牌局开始…</div>'}</div>
       </div>`;
 
     let panel = '';
@@ -1104,10 +1104,9 @@
             <input type="range" id="raiseSlider" min="${minRaiseTo}" max="${Math.max(minRaiseTo,maxRaiseTo)}" value="${minRaiseTo}" step="1">
           </div>
           <div class="raise-box">
-            <input type="number" id="raiseInput" placeholder="${t('raise_to')}" min="${minRaiseTo}">
+            <input type="number" id="raiseInput" placeholder="${t('raise_to')} ≥${minRaiseTo}" min="${minRaiseTo}">
             <button class="btn btn-primary auto" id="raiseBtn">${t('action_raise')}</button>
-          </div>
-          <p class="section-sub" style="margin-top:8px;font-family:var(--font-mono);letter-spacing:.02em;">最低加注到 <strong style="color:var(--gold-bright);">${minRaiseTo}</strong></p>`;
+          </div>`;
       }
       panel = `
         <div class="turn-panel">
