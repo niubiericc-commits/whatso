@@ -323,17 +323,6 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 @media (min-width:860px){ .seat-avatar{width:58px;height:58px;font-size:24px;} }
 .seat-pos.turn .seat-avatar{border-color:var(--gold-bright);box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);animation:seat-turn-glow 1.4s infinite;}
 @keyframes seat-turn-glow{0%,100%{box-shadow:0 0 0 4px rgba(255,216,115,0.35),0 5px 14px rgba(0,0,0,.5);}50%{box-shadow:0 0 0 8px rgba(255,216,115,0.15),0 5px 14px rgba(0,0,0,.5);}}
-/* 过牌/跟注/加注后，头像外圈红黄交替闪烁几下，比单纯变色更抓眼球，比常驻大字标签更不占地方 */
-.seat-avatar.act-flash{animation:act-flash-ring 0.55s ease-in-out 4;}
-@keyframes act-flash-ring{
-  0%,100%{box-shadow:0 0 0 4px rgba(255,216,115,0.55),0 5px 14px rgba(0,0,0,.5);}
-  50%{box-shadow:0 0 0 5px rgba(224,87,106,0.75),0 5px 14px rgba(0,0,0,.5);}
-}
-.seat-pos.turn .seat-avatar.act-flash{animation:act-flash-ring-turn 0.55s ease-in-out 4;}
-@keyframes act-flash-ring-turn{
-  0%,100%{box-shadow:0 0 0 5px rgba(255,216,115,0.6),0 5px 14px rgba(0,0,0,.5);}
-  50%{box-shadow:0 0 0 6px rgba(224,87,106,0.8),0 5px 14px rgba(0,0,0,.5);}
-}
 .seat-pos.me .seat-avatar{box-shadow:0 0 0 3px var(--blue-bright),0 5px 14px rgba(0,0,0,.5);}
 .seat-pos.folded{opacity:.32;}
 .seat-num-badge{position:absolute;top:-4px;left:-4px;width:17px;height:17px;border-radius:50%;background:var(--surface);
@@ -360,11 +349,30 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);bo
 .seat-bet-chip::before{content:'';width:15px;height:15px;border-radius:50%;flex:none;
   background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);box-shadow:0 0 0 1.5px rgba(0,0,0,.5);}
 @media (min-width:860px){ .seat-bet-chip{font-size:15px;padding:6px 15px 6px 6px;} .seat-bet-chip::before{width:19px;height:19px;} }
-/* 加注/跟注：筹码变红，一眼看出这次是"加钱"进来的，跟单纯的盲注/过牌区分开 */
-.seat-bet-chip.chip-hot{color:#ffb0b8;border-color:var(--burgundy-bright);
-  box-shadow:0 4px 12px rgba(0,0,0,.55), 0 0 14px -1px rgba(224,87,106,0.75);}
-.seat-bet-chip.chip-hot::before{background:repeating-conic-gradient(var(--burgundy-bright) 0deg 45deg, #fff 45deg 90deg);}
+/* 加注/跟注：筹码本身红黄交替闪烁几下，比单纯变红更抓眼球，闪完停在金色（正常颜色） */
+.seat-bet-chip.chip-hot{animation:bet-chip-in .25s ease-out, chip-flash-color 0.5s ease-in-out 4;}
+@keyframes chip-flash-color{
+  0%,100%{color:var(--gold-bright);border-color:var(--gold-bright);box-shadow:0 4px 12px rgba(0,0,0,.55), 0 0 12px -2px rgba(255,216,115,0.5);}
+  50%{color:#ffb0b8;border-color:var(--burgundy-bright);box-shadow:0 4px 12px rgba(0,0,0,.55), 0 0 14px -1px rgba(224,87,106,0.8);}
+}
+.seat-bet-chip.chip-hot::before{animation:chip-flash-dot 0.5s ease-in-out 4;}
+@keyframes chip-flash-dot{
+  0%,100%{background:repeating-conic-gradient(var(--burgundy) 0deg 45deg, #fff 45deg 90deg);}
+  50%{background:repeating-conic-gradient(var(--burgundy-bright) 0deg 45deg, #fff 45deg 90deg);}
+}
 .seat-allin-tag{font-family:var(--font-mono);font-size:7.5px;background:var(--burgundy);color:#fff;padding:1px 4px;border-radius:4px;}
+
+/* ---------- 行动提示：过牌/跟注/加注/全下/弃牌之后，头像上方弹出文字标签 ---------- */
+.action-flag{position:absolute;top:-4px;left:50%;transform:translate(-50%,-100%);z-index:6;
+  font-family:var(--font-mono);font-size:10px;font-weight:800;letter-spacing:.03em;padding:4px 10px;border-radius:999px;
+  white-space:nowrap;box-shadow:0 4px 10px rgba(0,0,0,.5);animation:action-flag-in .2s ease-out;}
+@keyframes action-flag-in{from{opacity:0;transform:translate(-50%,-100%) translateY(5px);}to{opacity:1;transform:translate(-50%,-100%) translateY(0);}}
+.action-flag.action-fold{background:var(--surface-2);color:var(--muted);border:1px solid var(--border-strong);}
+.action-flag.action-check{background:rgba(45,212,191,0.18);color:var(--teal-bright);border:1px solid rgba(45,212,191,0.45);}
+.action-flag.action-call{background:rgba(58,110,168,0.22);color:var(--blue-bright);border:1px solid rgba(92,143,201,0.55);}
+.action-flag.action-raise{background:linear-gradient(180deg,var(--gold-bright),var(--gold));color:var(--ink);}
+.action-flag.action-allin{background:linear-gradient(180deg,var(--burgundy-bright),var(--burgundy));color:#fff;}
+@media (min-width:860px){ .action-flag{font-size:12px;padding:5px 13px;} }
 
 /* ---------- 底池筹码飞向赢家的动画（起始位置由 JS 设置，具体移动靠 JS 切换 left/top 触发 transition） ---------- */
 .pot-fly-chip{position:absolute;width:18px;height:18px;border-radius:50%;z-index:8;pointer-events:none;
