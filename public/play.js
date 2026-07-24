@@ -979,8 +979,6 @@
     if(st.stage==='showdown'){
       (st.results||[]).forEach(r=>{ r.winners.forEach(wn=>{ winnerAmounts[wn] = (winnerAmounts[wn]||0) + Math.floor(r.amount/r.winners.length); }); });
     }
-    const ACTION_LABEL = { fold:{zh:'弃牌',en:'FOLD'}, check:{zh:'过牌',en:'CHECK'}, call:{zh:'跟注',en:'CALL'}, raise:{zh:'加注',en:'RAISE'}, allin:{zh:'全下',en:'ALL IN'} };
-    const curLangForAction = getStrSetting('lang','zh');
     const seatPositions = {};
     const betChipsHtml = [];
     const seatsHtml = st.players.map((p,orig)=>{
@@ -989,10 +987,12 @@
       const angle = Math.PI/2 + (k/n)*2*Math.PI;
       const left = 50 + rx*Math.cos(angle), top = 50 + ry*Math.sin(angle);
       seatPositions[p.name] = {left, top};
-      // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目
+      // 下注筹码往桌子中心方向挪一点（35%的距离），跟真实客户端一样悬在座位和底池之间，更醒目；
+      // 加注/跟注这两种"主动加钱"的操作，筹码变红，一眼区分开
       if(p.betThisStreet>0){
         const chipLeft = left + (50-left)*0.4, chipTop = top + (48-top)*0.4;
-        betChipsHtml.push(`<div class="seat-bet-chip" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
+        const isHot = p.lastAction==='raise' || p.lastAction==='call';
+        betChipsHtml.push(`<div class="seat-bet-chip${isHot?' chip-hot':''}" style="left:${chipLeft}%;top:${chipTop}%;">${p.betThisStreet}</div>`);
       }
       const cls=['seat-pos']; if(orig===st.turn) cls.push('turn'); if(p.folded) cls.push('folded'); if(p.id===playerId) cls.push('me');
       const initial = (p.name||'?').trim().charAt(0).toUpperCase();
@@ -1004,10 +1004,8 @@
           ${p.handName ? `<div class="win-handname">${esc(p.handName)}</div>` : ''}
         </div>
         <div class="win-amount-pop">+${winnerAmounts[p.name]||0}</div>` : '';
-      const actionLabel = (!isWinner && p.lastAction && ACTION_LABEL[p.lastAction]) ? `<div class="action-flag action-${p.lastAction}">${ACTION_LABEL[p.lastAction][curLangForAction==='en'?'en':'zh']}</div>` : '';
       return `<div class="${cls.join(' ')}" style="left:${left}%;top:${top}%">
         ${winBurstHtml}
-        ${actionLabel}
         <div class="seat-avatar avatar-c${orig%9}"><span class="seat-num-badge">${orig+1}</span>${esc(initial)}${orig===st.dealerIdx?'<span class="seat-dealer-btn">D</span>':''}</div>
         <div class="seat-nameplate">
           <div class="seat-pname">${esc(p.name)}${p.id===playerId?'<span class="me-tag"> (我)</span>':''}</div>
