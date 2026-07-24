@@ -927,7 +927,7 @@
     const errHtml = lastError ? `<div class="err-box">${esc(lastError)}</div>` : '';
 
     // 筹码打光了：优先显示补码弹窗（现金桌才有，锦标赛桌走淘汰逻辑不会有这个标记）
-    if(me && me.needsRebuy && account){
+    if(me && me.needsRebuy && account && st.stage!=='showdown'){
       const suggested = Math.max(st.minBuyIn||200, Math.min(accountClubPoints, (st.minBuyIn||200)*3));
       app.innerHTML = `
         ${errHtml}
